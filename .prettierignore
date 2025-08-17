@@ -1,0 +1,27 @@
+# node & builds
+node_modules/
+dist/
+build/
+coverage/
+.tmp/
+.temp/
+*.tsbuildinfo
+
+# front-end/Vite
+dist-ssr
+*.local
+
+# server build
+server/dist/
+
+# lock & logs
+*.log
+pnpm-lock.yaml
+yarn.lock
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

@@ -1,0 +1,15 @@
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": true
+  },
+  "prettier.enable": true,
+  "prettier.configPath": ".prettierrc",
+  // чтобы не форматировать большие артефакты в preview
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "server/dist": true
+  }
+}
