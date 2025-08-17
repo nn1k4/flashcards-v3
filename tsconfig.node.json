@@ -11,7 +11,15 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
+
+    /* ✅ FIX: enable project references */
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+
+    /* ❌ REMOVE this line:
     "noEmit": true,
+    */
 
     /* Linting */
     "strict": true,
@@ -21,5 +29,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vitest.setup.ts"]
 }
