@@ -2,6 +2,7 @@
 /** Главный каркас приложения.
  *  Далее сюда добавим TextInput/ProcessingView/ContentView по плану.
  */
+import BatchPlayground from '../pages/BatchPlayground';
 export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-white flex items-center justify-center">
@@ -10,6 +11,7 @@ export default function App() {
         <p className="text-gray-600 mt-2">
           База проекта готова. Далее — MANIFEST-FIRST, агрегация по SID, FSM и Zod DTO.
         </p>
+        <BatchPlayground />;
       </div>
     </div>
   );

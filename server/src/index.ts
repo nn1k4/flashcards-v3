@@ -3,8 +3,9 @@ import cors from 'cors';
 import { randomUUID } from 'crypto';
 import { ZManifest, type Manifest, ZBatchResultV1, type BatchResultV1 } from './schemas';
 
-
-// Простая in-memory "очередь" задач
+// -------------------------------
+// In-memory "очередь" задач
+// -------------------------------
 type Job =
   | { status: 'processing'; manifest: Manifest; createdAt: number }
   | { status: 'completed'; manifest: Manifest; result: BatchResultV1; createdAt: number; finishedAt: number }
@@ -18,13 +19,16 @@ app.use(express.json({ limit: '2mb' }));
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 
-// Утилита "перевода" (заглушка)
+// -------------------------------
+// Утилиты
+// -------------------------------
+
+// Примитивная "переводческая" заглушка
 function translateLvToRu(lv: string): string {
-  // Примитивная имитация
   return lv.replace(/\s+/g, ' ').trim() ? `RU: ${lv}` : '';
 }
 
-// Случайно перемешать массив (чтобы проверить, что клиент агрегирует по SID)
+// Перемешивание массива, чтобы проверять агрегацию по SID на клиенте
 function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -34,7 +38,41 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// POST /claude/batch — принять весь манифест и создать "задачу"
+// Простая генерация мок-карточки на основе LV
+function makeMockCard(lv: string, sid: number, sig: string) {
+  // Берём первые 2–3 токена как "формы"
+  const words = lv
+    .replace(/[^\p{L}\p{M}\-']/gu, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const base = words[0] ?? '—';
+
+  return {
+    base_form: base,
+    base_translation: `RU: ${base}`,
+    unit: 'word',
+    forms: words.slice(0, Math.min(3, words.length)).map(w => ({
+      form: w,
+      translation: `RU: ${w}`,
+      type: 'token',
+    })),
+  contexts: [
+      { lv, ru: `RU: ${lv}`, sid, sig },
+    ],
+    visible: true,
+  };
+}
+
+// -------------------------------
+// Маршруты
+// -------------------------------
+
+// Healthcheck (удобно для smoke-тестов через прокси)
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
+// POST /claude/batch — принять целый манифест и создать "задачу"
 app.post('/claude/batch', (req, res) => {
   const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);
   if (!parse.success) {
@@ -47,35 +85,44 @@ app.post('/claude/batch', (req, res) => {
   // Регистрируем задачу
   jobs.set(batchId, { status: 'processing', manifest, createdAt: Date.now() });
 
-  // Имитация фона: через 2–4 сек готовим результат
+  // Имитация фоновой обработки: через 2–4 сек подготовим результат
   const delay = 2000 + Math.floor(Math.random() * 2000);
   setTimeout(() => {
     const job = jobs.get(batchId);
     if (!job || job.status !== 'processing') return;
 
     const started = Date.now();
-    // Формируем items в СЛУЧАЙНОМ порядке, чтобы клиент агрегировал по SID
+
+    // ❗ Детерминированные "ошибочные" SID для демонстрации: все sid % 4 === 1 считаем failed
+    const failedSids = manifest.items
+      .filter(it => it.sid % 4 === 1)
+      .map(it => it.sid);
+
+    // Формируем items ТОЛЬКО для успешных SID (ошибочные исключаем)
     const items = shuffle(
-      manifest.items.map((it) => ({
-        sid: it.sid,
-        sig: it.sig,
-        russian: translateLvToRu(it.lv),
-        cards: [] as any[],
-        processingTime: 50 + Math.floor(Math.random() * 50),
-      }))
+      manifest.items
+        .filter(it => !failedSids.includes(it.sid))
+        .map(it => ({
+          sid: it.sid,
+          sig: it.sig,
+          russian: translateLvToRu(it.lv),
+          cards: [makeMockCard(it.lv, it.sid, it.sig)],
+          processingTime: 50 + Math.floor(Math.random() * 50),
+        }))
     );
 
-    // Пример частичной ошибки (опционально)
-    const errors: BatchResultV1['errors'] | undefined =
-      manifest.items.length > 2
-        ? [{ sid: manifest.items[1]!.sid, error: 'Temporary processing error', errorCode: 'TEMP' }]
-        : undefined;
+    // Список ошибок (по failedSids) — отдельным полем
+    const errors: NonNullable<BatchResultV1['errors']> = failedSids.map(sid => ({
+      sid,
+      error: 'Temporary processing error',
+      errorCode: 'TEMP',
+    }));
 
     const result: BatchResultV1 = {
       schemaVersion: 1,
       batchId,
       items,
-      ...(errors ? { errors } : {}),
+      ...(errors.length ? { errors } : {}),
       metadata: {
         totalProcessingTime: Date.now() - started,
         model: 'mock-llm',
@@ -83,10 +130,16 @@ app.post('/claude/batch', (req, res) => {
       },
     };
 
-    // Валидация перед отправкой — строгие контракты
+    // Строгая валидация контракта ответа
     const check = ZBatchResultV1.safeParse(result);
     if (!check.success) {
-      jobs.set(batchId, { status: 'failed', manifest, error: 'Result schema invalid', createdAt: job.createdAt, finishedAt: Date.now() });
+      jobs.set(batchId, {
+        status: 'failed',
+        manifest,
+        error: 'Result schema invalid',
+        createdAt: job.createdAt,
+        finishedAt: Date.now(),
+      });
       return;
     }
 
@@ -96,7 +149,7 @@ app.post('/claude/batch', (req, res) => {
   return res.json({ batchId });
 });
 
-// GET /claude/batch/:batchId — 202 пока считается, 200 когда готово, 404 если не найдено
+// GET /claude/batch/:batchId — 202 пока считается, 200 когда готово, 404 если нет
 app.get('/claude/batch/:batchId', (_req, res) => {
   const { batchId } = _req.params;
   const job = jobs.get(batchId);
@@ -109,15 +162,6 @@ app.get('/claude/batch/:batchId', (_req, res) => {
   return res.json(job.result);
 });
 
-// DELETE /claude/batch/:batchId — отмена
-app.delete('/claude/batch/:batchId', (_req, res) => {
-  const { batchId } = _req.params;
-  const job = jobs.get(batchId);
-  if (!job) return res.status(404).end();
-  jobs.delete(batchId);
-  return res.status(204).end();
-});
-
 // (Опционально) GET /claude/batch/:batchId/status — удобный статус с прогрессом
 app.get('/claude/batch/:batchId/status', (_req, res) => {
   const { batchId } = _req.params;
@@ -125,12 +169,22 @@ app.get('/claude/batch/:batchId/status', (_req, res) => {
   if (!job) return res.status(404).json({ status: 'failed', error: 'not found' });
 
   if (job.status === 'processing') {
+    // Демонстрационный прогресс; в реале верните фактический
     return res.json({ status: 'processing', progress: 0.7 });
   }
   if (job.status === 'failed') {
     return res.json({ status: 'failed', error: 'internal error' });
   }
   return res.json({ status: 'completed', progress: 1 });
+});
+
+// DELETE /claude/batch/:batchId — отмена
+app.delete('/claude/batch/:batchId', (_req, res) => {
+  const { batchId } = _req.params;
+  const job = jobs.get(batchId);
+  if (!job) return res.status(404).end();
+  jobs.delete(batchId);
+  return res.status(204).end();
 });
 
 app.listen(PORT, () => {

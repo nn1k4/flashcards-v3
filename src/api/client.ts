@@ -88,51 +88,73 @@ class ClaudeApiClient {
     }
   }
 
-  async getBatchResult(batchId: string): Promise<BatchResultV1> {
-    try {
-      const res = await this.fetchWithTimeout(
-        `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}`
-      );
+async getBatchResult(batchId: string): Promise<BatchResultV1> {
+  try {
+    const res = await this.fetchWithTimeout(
+      `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}`
+    );
 
-      if (!res.ok) {
-        if (res.status === 202) {
-          throw new ApiError(
-            `Batch ${batchId} is still processing`,
-            'BATCH_PROCESSING',
-            true,
-            202
-          );
-        }
-        if (res.status === 404) {
-          throw new ApiError(`Batch ${batchId} not found`, 'BATCH_NOT_FOUND', false, 404);
-        }
-        throw new ApiError(
-          `Failed to get batch result: ${res.status} ${res.statusText}`,
-          'GET_FAILED',
-          res.status >= 500,
-          res.status
-        );
-      }
-
-      const raw = await res.json();
-      try {
-        return ZBatchResultV1.parse(raw);
-      } catch (e) {
-        throw new SchemaValidationError('Invalid batch result format', e);
-      }
-    } catch (err: unknown) {
-      if (err instanceof ApiError) throw err;
-      if (err instanceof TypeError && String(err.message).includes('fetch')) {
-        throw new ApiError('Network error while fetching result', 'NETWORK_ERROR', true);
-      }
+    // 1) Специальные статусы без тела — обрабатываем ДО любых попыток чтения JSON
+    if (res.status === 202 || res.status === 204) {
       throw new ApiError(
-        `Unexpected result error: ${err instanceof Error ? err.message : String(err)}`,
-        'UNKNOWN_ERROR',
-        false
+        `Batch ${batchId} is still processing`,
+        'BATCH_PROCESSING',
+        true,
+        res.status
       );
     }
-  }
+    if (res.status === 404) {
+      throw new ApiError(`Batch ${batchId} not found`, 'BATCH_NOT_FOUND', false, 404);
+    }
+    if (!res.ok) {
+      throw new ApiError(
+        `Failed to get batch result: ${res.status} ${res.statusText}`,
+        'GET_FAILED',
+        res.status >= 500,
+        res.status
+      );
+    }
 
+    // 2) Читаем текст тела безопасно: некоторые прокси могут вернуть 200 с пустым телом
+    const rawText = await res.text();
+    if (!rawText || !rawText.trim()) {
+      // трактуем как "ещё обрабатывается" — повторим polling
+      throw new ApiError(
+        `Batch ${batchId} has no content yet`,
+        'BATCH_PROCESSING',
+        true,
+        res.status
+      );
+    }
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(rawText);
+    } catch {
+      // Если пришёл не-JSON при 200 — это ошибка контракта
+      throw new SchemaValidationError('Invalid JSON in batch result', rawText);
+    }
+
+    // 3) Жёсткая Zod-валидация
+    try {
+      return ZBatchResultV1.parse(raw);
+    } catch (e) {
+      throw new SchemaValidationError('Invalid batch result format', e);
+    }
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+
+    if (err instanceof TypeError && String(err.message).includes('fetch')) {
+      throw new ApiError('Network error while fetching result', 'NETWORK_ERROR', true);
+    }
+
+    throw new ApiError(
+      `Unexpected result error: ${err instanceof Error ? err.message : String(err)}`,
+      'UNKNOWN_ERROR',
+      false
+    );
+  }
+}
   async getBatchStatus(batchId: string): Promise<{
     status: 'pending' | 'processing' | 'completed' | 'failed';
     progress?: number;
