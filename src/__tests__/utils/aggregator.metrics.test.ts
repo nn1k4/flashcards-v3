@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { buildManifest } from '../../utils/manifest';
-import { aggregateResultsBySid } from '../../utils/aggregator';
+import { describe, expect, it } from 'vitest';
 import type { BatchResultV1 } from '../../types/dto';
+import { aggregateResultsBySid } from '../../utils/aggregator';
+import { buildManifest } from '../../utils/manifest';
 
 describe('Aggregator — metrics', () => {
   it('считает duplicate/empty/invalidSig/missing корректно', () => {
@@ -10,10 +10,10 @@ describe('Aggregator — metrics', () => {
       schemaVersion: 1,
       batchId: manifest.batchId,
       items: [
-       { sid: 0, sig: manifest.items[0]!.sig, russian: 'Один.' },
-       { sid: 0, sig: manifest.items[0]!.sig, russian: 'Один.' }, // duplicate
-       { sid: 0, sig: manifest.items[0]!.sig, russian: '  ' },    // empty
-        { sid: 1, sig: 'WRONG_SIG', russian: 'Два.' },            // invalidSig
+        { sid: 0, sig: manifest.items[0]!.sig, russian: 'Один.' },
+        { sid: 0, sig: manifest.items[0]!.sig, russian: 'Один.' }, // duplicate
+        { sid: 0, sig: manifest.items[0]!.sig, russian: '  ' }, // empty
+        { sid: 1, sig: 'WRONG_SIG', russian: 'Два.' }, // invalidSig
       ],
     };
     const { metrics } = aggregateResultsBySid(manifest, batch);

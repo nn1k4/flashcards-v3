@@ -2,13 +2,13 @@
 // Контракты манифеста и базовая проверка инвариантов (Zod + TS)
 // ВАЖНО: нормализация для подписи должна совпадать с utils/splitter.normalizeText
 
-import { z } from "zod";
-import type { SentenceId, Signature } from "./core";
+import { z } from 'zod';
+import type { SentenceId, Signature } from './core';
 
 // ------------------------------------
 // Константы версии и Zod-схемы
 // ------------------------------------
-export const MANIFEST_VERSION = "1.0" as const;
+export const MANIFEST_VERSION = '1.0' as const;
 
 /** Элемент манифеста (одно LV-предложение). */
 export const ZManifestItem = z.object({
@@ -60,27 +60,27 @@ export type ManifestInvariants = {
  */
 export function normalizeForSignature(s: string): string {
   return s
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\s*\n\s*/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\s*\n\s*/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
 /** Кросс-платформенный base64 для Unicode строк. */
 function toBase64(str: string): string {
   // Браузерный путь
-  if (typeof (globalThis as any).btoa === "function") {
+  if (typeof (globalThis as any).btoa === 'function') {
     // Корректная UTF-8 упаковка для btoa
     // eslint-disable-next-line no-undef
     return (globalThis as any).btoa(unescape(encodeURIComponent(str)));
   }
   // Node.js путь
   const Buf: any = (globalThis as any).Buffer;
-  if (Buf && typeof Buf.from === "function") {
-    return Buf.from(str, "utf-8").toString("base64");
+  if (Buf && typeof Buf.from === 'function') {
+    return Buf.from(str, 'utf-8').toString('base64');
   }
-  throw new Error("No base64 encoder available in current runtime");
+  throw new Error('No base64 encoder available in current runtime');
 }
 
 /**
@@ -121,13 +121,11 @@ export function computeManifestInvariants(m: Manifest): ManifestInvariants {
   }
 
   // 3) Подписи соответствуют правилу
-  const signaturesValid = m.items.every(
-    (it) => it.sig === computeSignature(it.lv, it.sid)
-  );
+  const signaturesValid = m.items.every((it) => it.sig === computeSignature(it.lv, it.sid));
 
   // 4) source соответствует конкатенации lv (после нормализации)
   const normalizedSource = normalizeForSignature(m.source);
-  const normalizedJoin = normalizeForSignature(m.items.map((it) => it.lv).join(" "));
+  const normalizedJoin = normalizeForSignature(m.items.map((it) => it.lv).join(' '));
   const sourceMatches = normalizedSource === normalizedJoin;
 
   return { sidSequential, signaturesValid, sourceMatches, noEmptyItems };

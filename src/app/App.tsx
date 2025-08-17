@@ -1,4 +1,3 @@
-
 /** Главный каркас приложения.
  *  Далее сюда добавим TextInput/ProcessingView/ContentView по плану.
  */

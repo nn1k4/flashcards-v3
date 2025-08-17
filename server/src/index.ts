@@ -1,14 +1,20 @@
-import express from 'express';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
-import { ZManifest, type Manifest, ZBatchResultV1, type BatchResultV1 } from './schemas';
+import express from 'express';
+import { ZBatchResultV1, ZManifest, type BatchResultV1, type Manifest } from './schemas';
 
 // -------------------------------
 // In-memory "очередь" задач
 // -------------------------------
 type Job =
   | { status: 'processing'; manifest: Manifest; createdAt: number }
-  | { status: 'completed'; manifest: Manifest; result: BatchResultV1; createdAt: number; finishedAt: number }
+  | {
+      status: 'completed';
+      manifest: Manifest;
+      result: BatchResultV1;
+      createdAt: number;
+      finishedAt: number;
+    }
   | { status: 'failed'; manifest: Manifest; error: string; createdAt: number; finishedAt: number };
 
 const jobs = new Map<string, Job>();
@@ -53,14 +59,12 @@ function makeMockCard(lv: string, sid: number, sig: string) {
     base_form: base,
     base_translation: `RU: ${base}`,
     unit: 'word',
-    forms: words.slice(0, Math.min(3, words.length)).map(w => ({
+    forms: words.slice(0, Math.min(3, words.length)).map((w) => ({
       form: w,
       translation: `RU: ${w}`,
       type: 'token',
     })),
-  contexts: [
-      { lv, ru: `RU: ${lv}`, sid, sig },
-    ],
+    contexts: [{ lv, ru: `RU: ${lv}`, sid, sig }],
     visible: true,
   };
 }
@@ -94,25 +98,23 @@ app.post('/claude/batch', (req, res) => {
     const started = Date.now();
 
     // ❗ Детерминированные "ошибочные" SID для демонстрации: все sid % 4 === 1 считаем failed
-    const failedSids = manifest.items
-      .filter(it => it.sid % 4 === 1)
-      .map(it => it.sid);
+    const failedSids = manifest.items.filter((it) => it.sid % 4 === 1).map((it) => it.sid);
 
     // Формируем items ТОЛЬКО для успешных SID (ошибочные исключаем)
     const items = shuffle(
       manifest.items
-        .filter(it => !failedSids.includes(it.sid))
-        .map(it => ({
+        .filter((it) => !failedSids.includes(it.sid))
+        .map((it) => ({
           sid: it.sid,
           sig: it.sig,
           russian: translateLvToRu(it.lv),
           cards: [makeMockCard(it.lv, it.sid, it.sig)],
           processingTime: 50 + Math.floor(Math.random() * 50),
-        }))
+        })),
     );
 
     // Список ошибок (по failedSids) — отдельным полем
-    const errors: NonNullable<BatchResultV1['errors']> = failedSids.map(sid => ({
+    const errors: NonNullable<BatchResultV1['errors']> = failedSids.map((sid) => ({
       sid,
       error: 'Temporary processing error',
       errorCode: 'TEMP',
@@ -143,7 +145,13 @@ app.post('/claude/batch', (req, res) => {
       return;
     }
 
-    jobs.set(batchId, { status: 'completed', manifest, result, createdAt: job.createdAt, finishedAt: Date.now() });
+    jobs.set(batchId, {
+      status: 'completed',
+      manifest,
+      result,
+      createdAt: job.createdAt,
+      finishedAt: Date.now(),
+    });
   }, delay);
 
   return res.json({ batchId });

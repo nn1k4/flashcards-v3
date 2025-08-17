@@ -1,19 +1,19 @@
 // src/types/dto.ts
 // Версионированные API-DTO результата батча (V1)
-import { z } from "zod";
+import { z } from 'zod';
 
 // Флэшкарта
 export const ZFlashcard = z.object({
   base_form: z.string(),
   base_translation: z.string().optional(),
-  unit: z.enum(["word", "phrase"]).default("word"),
+  unit: z.enum(['word', 'phrase']).default('word'),
   forms: z
     .array(
       z.object({
         form: z.string(),
         translation: z.string(),
         type: z.string(), // грамматический тип
-      })
+      }),
     )
     .default([]),
   contexts: z
@@ -23,7 +23,7 @@ export const ZFlashcard = z.object({
         ru: z.string(),
         sid: z.number().optional(),
         sig: z.string().optional(),
-      })
+      }),
     )
     .default([]),
   visible: z.boolean().default(true),
@@ -50,7 +50,7 @@ export const ZBatchResultV1 = z.object({
         sid: z.number().int().nonnegative(),
         error: z.string(),
         errorCode: z.string().optional(),
-      })
+      }),
     )
     .optional(),
   metadata: z

@@ -10,10 +10,10 @@
  */
 export function normalizeText(text: string): string {
   return text
-    .replace(/\r\n/g, '\n')     // Windows → \n
-    .replace(/\r/g, '\n')       // Mac → \n
-    .replace(/\s*\n\s*/g, ' ')  // переносы строк → пробел
-    .replace(/\s+/g, ' ')       // множественные пробелы → один
+    .replace(/\r\n/g, '\n') // Windows → \n
+    .replace(/\r/g, '\n') // Mac → \n
+    .replace(/\s*\n\s*/g, ' ') // переносы строк → пробел
+    .replace(/\s+/g, ' ') // множественные пробелы → один
     .trim();
 }
 
@@ -62,9 +62,7 @@ export function validateSplitterInvariant(originalText: string, sentences: strin
   const a = normalizeText(originalText);
   const b = normalizeText(rejoined);
   if (a !== b) {
-    throw new Error(
-      `Splitter invariant violated:\nOriginal: "${a}"\nRejoined: "${b}"`
-    );
+    throw new Error(`Splitter invariant violated:\nOriginal: "${a}"\nRejoined: "${b}"`);
   }
 }
 

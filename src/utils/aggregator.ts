@@ -2,16 +2,19 @@
 // Агрегатор результатов по SID + каноникализация RU + метрики
 // ВАЖНО: MANIFEST-FIRST — LV текст и порядок всегда из манифеста.
 
-import type { Manifest } from '../types/manifest';
-import type { BatchResultV1, BatchResultItemV1, Flashcard } from '../types/dto';
 import type { ProcessingMetrics } from '../types/core';
+import type { BatchResultItemV1, BatchResultV1, Flashcard } from '../types/dto';
+import type { Manifest } from '../types/manifest';
 import { normalizeText } from './splitter';
 
-export type AggregatedBySid = Map<number, {
-  ru: string[];
-  cards: Flashcard[];
-  warnings: string[];
-}>;
+export type AggregatedBySid = Map<
+  number,
+  {
+    ru: string[];
+    cards: Flashcard[];
+    warnings: string[];
+  }
+>;
 
 /** Канонический выбор RU по частоте и длине; при необходимости добавляем финальную точку. */
 export function pickCanonicalRussian(variants: string[], ensureDot: boolean = true): string {
@@ -22,13 +25,18 @@ export function pickCanonicalRussian(variants: string[], ensureDot: boolean = tr
   for (const v of variants) {
     const t = v.trim();
     if (!t) continue;
-    const key = normalizeText(t).toLowerCase().replace(/[.!?…]+$/, '');
+    const key = normalizeText(t)
+      .toLowerCase()
+      .replace(/[.!?…]+$/, '');
     if (!key) continue;
 
     const prev = freq.get(key);
     if (prev) {
       prev.count++;
-      if (t.length > prev.len) { prev.orig = t; prev.len = t.length; }
+      if (t.length > prev.len) {
+        prev.orig = t;
+        prev.len = t.length;
+      }
     } else {
       freq.set(key, { count: 1, orig: t, len: t.length });
     }
@@ -51,10 +59,13 @@ function applyResultItem(
   manifest: Manifest,
   aggregated: AggregatedBySid,
   metrics: ProcessingMetrics,
-  item: BatchResultItemV1
+  item: BatchResultItemV1,
 ): void {
   const manifestItem = manifest.items[item.sid];
-  if (!manifestItem) { metrics.schemaViolations++; return; }
+  if (!manifestItem) {
+    metrics.schemaViolations++;
+    return;
+  }
 
   if (manifestItem.sig !== item.sig) metrics.invalidSigs++; // фиксируем, но продолжаем
 
@@ -68,9 +79,9 @@ function applyResultItem(
   }
 
   if (item.cards?.length) {
-    const enriched = item.cards.map(card => ({
+    const enriched = item.cards.map((card) => ({
       ...card,
-      contexts: card.contexts.map(ctx => ({ ...ctx, sid: item.sid, sig: item.sig })),
+      contexts: card.contexts.map((ctx) => ({ ...ctx, sid: item.sid, sig: item.sig })),
     }));
     bucket.cards.push(...enriched);
   }
@@ -81,7 +92,7 @@ function applyResultItem(
 /** Ядро: агрегируем по SID независимо от порядка JSONL и считаем метрики. */
 export function aggregateResultsBySid(
   manifest: Manifest,
-  batch: BatchResultV1
+  batch: BatchResultV1,
 ): { data: AggregatedBySid; metrics: ProcessingMetrics } {
   const aggregated: AggregatedBySid = new Map();
   for (const it of manifest.items) aggregated.set(it.sid, { ru: [], cards: [], warnings: [] });
@@ -98,8 +109,9 @@ export function aggregateResultsBySid(
 
   for (const item of batch.items) applyResultItem(manifest, aggregated, metrics, item);
 
-  aggregated.forEach(b => {
-    if (b.ru.length || b.cards.length) metrics.receivedSids++; else metrics.missingSids++;
+  aggregated.forEach((b) => {
+    if (b.ru.length || b.cards.length) metrics.receivedSids++;
+    else metrics.missingSids++;
   });
 
   return { data: aggregated, metrics };
@@ -109,7 +121,7 @@ export function aggregateResultsBySid(
 export function buildRussianTextFromAggregation(
   manifest: Manifest,
   aggregated: AggregatedBySid,
-  useNewlines: boolean = true
+  useNewlines: boolean = true,
 ): string {
   const sep = useNewlines ? '\n' : ' ';
   const out: string[] = [];
@@ -124,6 +136,6 @@ export function buildRussianTextFromAggregation(
 /** Извлечь все карточки. */
 export function extractAllFlashcards(aggregated: AggregatedBySid): Flashcard[] {
   const out: Flashcard[] = [];
-  aggregated.forEach(v => out.push(...v.cards));
+  aggregated.forEach((v) => out.push(...v.cards));
   return out;
 }

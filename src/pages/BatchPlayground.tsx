@@ -16,7 +16,7 @@ type RowStatus = 'ok' | 'failed' | 'pending';
 export default function BatchPlayground() {
   // --- Ввод LV текста пользователем ---
   const [lvInput, setLvInput] = useState<string>(
-    'Sveiks! Kā tev klājas? Es mācos latviešu valodu.'
+    'Sveiks! Kā tev klājas? Es mācos latviešu valodu.',
   );
   const [maxPerChunk, setMaxPerChunk] = useState<number>(20);
 
@@ -28,7 +28,7 @@ export default function BatchPlayground() {
   const {
     fsmState,
     batchResult,
-    progress,         // может быть 0 в ready — используем fallback ниже
+    progress, // может быть 0 в ready — используем fallback ниже
     processingTime,
     isProcessing,
     canStart,
@@ -88,8 +88,11 @@ export default function BatchPlayground() {
   // -----------------------------
   // Метрики и статусы по SID (восстанавливаем из cards.contexts + манифеста)
   // -----------------------------
-  const sidList = useMemo(() => manifest?.items.map(i => i.sid) ?? [], [manifest]);
-  const sigBySid = useMemo(() => new Map(manifest?.items.map(i => [i.sid, i.sig]) ?? []), [manifest]);
+  const sidList = useMemo(() => manifest?.items.map((i) => i.sid) ?? [], [manifest]);
+  const sigBySid = useMemo(
+    () => new Map(manifest?.items.map((i) => [i.sid, i.sig]) ?? []),
+    [manifest],
+  );
 
   // Берём OK-SID из карточек: contexts[].sid
   const okSidCounts = useMemo(() => {
@@ -118,13 +121,15 @@ export default function BatchPlayground() {
 
   const pendingList = useMemo(() => {
     if (isReady) return [] as number[];
-    return sidList.filter(sid => !okSet.has(sid));
+    return sidList.filter((sid) => !okSet.has(sid));
   }, [isReady, sidList, okSet]);
 
   // Метрики
   const duplicatesCount = useMemo(() => {
     let d = 0;
-    okSidCounts.forEach((n) => { if (n > 1) d++; });
+    okSidCounts.forEach((n) => {
+      if (n > 1) d++;
+    });
     return d;
   }, [okSidCounts]);
 
@@ -143,7 +148,7 @@ export default function BatchPlayground() {
     sigByOkSid.forEach((arr, sid) => {
       const expected = sigBySid.get(sid);
       if (!expected) return;
-      if (!arr.some(s => s === expected)) c++;
+      if (!arr.some((s) => s === expected)) c++;
     });
     return c;
   }, [batchResult, sigBySid]);
@@ -162,14 +167,14 @@ export default function BatchPlayground() {
 
   const missingCount = useMemo(() => {
     if (!isReady) {
-      return sidList.filter(sid => !okSet.has(sid)).length;
+      return sidList.filter((sid) => !okSet.has(sid)).length;
     }
     return 0; // в ready missing нет — это failed
   }, [isReady, sidList, okSet]);
 
   // Таблица по каждому SID: lv/ru/status
   const sidRows = useMemo(() => {
-    const lvBySid = new Map(manifest?.items.map(i => [i.sid, i.lv]) ?? []);
+    const lvBySid = new Map(manifest?.items.map((i) => [i.sid, i.lv]) ?? []);
     const ruBySid = new Map<number, string>();
     for (const card of batchResult?.cards ?? []) {
       for (const ctx of card.contexts ?? []) {
@@ -182,7 +187,7 @@ export default function BatchPlayground() {
       sid,
       lv: lvBySid.get(sid) ?? '',
       ru: ruBySid.get(sid) ?? '',
-      status: failedSet.has(sid) ? 'failed' : (okSet.has(sid) ? 'ok' : 'pending'),
+      status: failedSet.has(sid) ? 'failed' : okSet.has(sid) ? 'ok' : 'pending',
     }));
   }, [manifest, batchResult, sidList, okSet, failedSet]);
 
@@ -220,13 +225,18 @@ export default function BatchPlayground() {
         input: { lvTextRaw: lvInput },
 
         // манифест (snapshot для последующих проверок, MANIFEST-FIRST)
-        manifest: manifest ? {
-          version: manifest.version,
-          createdAt: manifest.createdAt,
-          items: manifest.items.map(it => ({
-            sid: it.sid, sig: it.sig, chunkIndex: it.chunkIndex, lv: it.lv
-          })),
-        } : null,
+        manifest: manifest
+          ? {
+              version: manifest.version,
+              createdAt: manifest.createdAt,
+              items: manifest.items.map((it) => ({
+                sid: it.sid,
+                sig: it.sig,
+                chunkIndex: it.chunkIndex,
+                lv: it.lv,
+              })),
+            }
+          : null,
 
         // агрегированные показатели
         manifestStats: {
@@ -245,9 +255,14 @@ export default function BatchPlayground() {
           empty: emptyCount,
           missing: missingCount,
           // распределение по чанкам — полезно для будущих оптимизаций
-          byChunk: manifest ? Array.from(
-            manifest.items.reduce((m, it) => m.set(it.chunkIndex, (m.get(it.chunkIndex) ?? 0) + 1), new Map<number, number>())
-          ).map(([chunk, size]) => ({ chunk, size })) : [],
+          byChunk: manifest
+            ? Array.from(
+                manifest.items.reduce(
+                  (m, it) => m.set(it.chunkIndex, (m.get(it.chunkIndex) ?? 0) + 1),
+                  new Map<number, number>(),
+                ),
+              ).map(([chunk, size]) => ({ chunk, size }))
+            : [],
         },
 
         // диагностика по каждому SID
@@ -261,7 +276,9 @@ export default function BatchPlayground() {
         },
       };
 
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json;charset=utf-8',
+      });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `flashcards3_batch_${manifest?.batchId ?? 'noid'}.json`;
@@ -295,16 +312,16 @@ export default function BatchPlayground() {
             value={maxPerChunk}
             onChange={(e) => setMaxPerChunk(Number(e.target.value))}
           />
-          <button style={styles.btn} onClick={onBuildManifest}>Сгенерировать манифест</button>
+          <button style={styles.btn} onClick={onBuildManifest}>
+            Сгенерировать манифест
+          </button>
         </div>
 
         {manifest && (
           <div style={styles.meta}>
-            <b>Манифест:</b> batchId=<code>{manifest.batchId}</code>,
-            всего предложений=<b>{stats?.totalSentences}</b>,
-            чанков=<b>{stats?.totalChunks}</b>,
-            maxSize=<b>{stats?.maxChunkSize}</b>,
-            avg/chunk=<b>{stats?.avgSentencesPerChunk.toFixed(2)}</b>
+            <b>Манифест:</b> batchId=<code>{manifest.batchId}</code>, всего предложений=
+            <b>{stats?.totalSentences}</b>, чанков=<b>{stats?.totalChunks}</b>, maxSize=
+            <b>{stats?.maxChunkSize}</b>, avg/chunk=<b>{stats?.avgSentencesPerChunk.toFixed(2)}</b>
           </div>
         )}
       </section>
@@ -327,23 +344,32 @@ export default function BatchPlayground() {
         </div>
 
         <div style={styles.meta}>
-          <div><b>Состояние батча:</b> {fsmState.batchState}</div>
-          <div><b>Прогресс:</b> {(progressDisplay * 100).toFixed(0)}%</div>
           <div>
-            <b>SID:</b> ok={<b>{countsFallback.ok}</b>},&nbsp;
-            failed={<b>{countsFallback.failed}</b>},&nbsp;
-            pending={<b>{countsFallback.pending}</b>}
+            <b>Состояние батча:</b> {fsmState.batchState}
           </div>
-          <div><b>Processing time (accum):</b> {processingTime} ms</div>
+          <div>
+            <b>Прогресс:</b> {(progressDisplay * 100).toFixed(0)}%
+          </div>
+          <div>
+            <b>SID:</b> ok={<b>{countsFallback.ok}</b>},&nbsp; failed=
+            {<b>{countsFallback.failed}</b>},&nbsp; pending={<b>{countsFallback.pending}</b>}
+          </div>
+          <div>
+            <b>Processing time (accum):</b> {processingTime} ms
+          </div>
         </div>
 
         {errorMsg && <div style={styles.error}>Ошибка: {errorMsg}</div>}
-        {isProcessing && <div style={styles.info}>Идёт обработка… polling до готовности (HTTP 202 → 200).</div>}
+        {isProcessing && (
+          <div style={styles.info}>Идёт обработка… polling до готовности (HTTP 202 → 200).</div>
+        )}
       </section>
 
       <section style={styles.card}>
         <h2 style={styles.h2}>3) Результат (агрегация по SID)</h2>
-        {!batchResult && <div style={styles.info}>Результат пока отсутствует. Запустите обработку.</div>}
+        {!batchResult && (
+          <div style={styles.info}>Результат пока отсутствует. Запустите обработку.</div>
+        )}
         {batchResult && (
           <>
             <div style={styles.rowCols}>
@@ -363,12 +389,25 @@ export default function BatchPlayground() {
             <div style={styles.meta}>
               <h3 style={styles.h3}>Метрики агрегатора</h3>
               <ul style={{ margin: '6px 0 0 16px' }}>
-                <li>Всего SID по манифесту: <b>{sidList.length}</b></li>
-                <li>OK: <b>{countsFallback.ok}</b>, Failed: <b>{countsFallback.failed}</b>, Pending: <b>{countsFallback.pending}</b></li>
-                <li>Duplicates (по SID в контекстах): <b>{duplicatesCount}</b></li>
-                <li>Invalid SIG: <b>{invalidSigCount}</b></li>
-                <li>Empty RU: <b>{emptyCount}</b></li>
-                <li>Missing (нет ни в контекстах, ни в errors): <b>{missingCount}</b></li>
+                <li>
+                  Всего SID по манифесту: <b>{sidList.length}</b>
+                </li>
+                <li>
+                  OK: <b>{countsFallback.ok}</b>, Failed: <b>{countsFallback.failed}</b>, Pending:{' '}
+                  <b>{countsFallback.pending}</b>
+                </li>
+                <li>
+                  Duplicates (по SID в контекстах): <b>{duplicatesCount}</b>
+                </li>
+                <li>
+                  Invalid SIG: <b>{invalidSigCount}</b>
+                </li>
+                <li>
+                  Empty RU: <b>{emptyCount}</b>
+                </li>
+                <li>
+                  Missing (нет ни в контекстах, ни в errors): <b>{missingCount}</b>
+                </li>
               </ul>
             </div>
           </>
@@ -390,7 +429,7 @@ export default function BatchPlayground() {
                 </tr>
               </thead>
               <tbody>
-                {sidRows.map(row => (
+                {sidRows.map((row) => (
                   <tr key={row.sid}>
                     <td style={styles.tdMono}>{row.sid}</td>
                     <td style={{ ...styles.td, ...statusStyle(row.status) }}>
@@ -423,28 +462,63 @@ function statusStyle(status: RowStatus): React.CSSProperties {
 
 // Простой inline-стайл, без зависимостей
 const styles: Record<string, React.CSSProperties> = {
-  container: { maxWidth: 980, margin: '24px auto', padding: '0 16px', fontFamily: 'system-ui, sans-serif' },
+  container: {
+    maxWidth: 980,
+    margin: '24px auto',
+    padding: '0 16px',
+    fontFamily: 'system-ui, sans-serif',
+  },
   h1: { fontSize: 28, margin: '8px 0 16px' },
   h2: { fontSize: 20, margin: '0 0 12px' },
   h3: { fontSize: 16, margin: '0 0 8px' },
   card: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 },
   label: { display: 'block', fontWeight: 600, marginBottom: 6 },
   labelInline: { marginRight: 8, fontWeight: 600 },
-  textarea: { width: '100%', fontFamily: 'monospace', padding: 8, borderRadius: 6, border: '1px solid #e5e7eb' },
-  input: { width: 90, marginRight: 12, padding: '6px 8px', borderRadius: 6, border: '1px solid #e5e7eb' },
+  textarea: {
+    width: '100%',
+    fontFamily: 'monospace',
+    padding: 8,
+    borderRadius: 6,
+    border: '1px solid #e5e7eb',
+  },
+  input: {
+    width: 90,
+    marginRight: 12,
+    padding: '6px 8px',
+    borderRadius: 6,
+    border: '1px solid #e5e7eb',
+  },
   row: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 },
   rowWrap: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   rowCols: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
   col: { minWidth: 0 },
-  btn: { padding: '8px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f8fafc', cursor: 'pointer' },
-  pre: { whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 8, borderRadius: 6, border: '1px solid #eef2f7', minHeight: 60 },
+  btn: {
+    padding: '8px 12px',
+    borderRadius: 6,
+    border: '1px solid #e5e7eb',
+    background: '#f8fafc',
+    cursor: 'pointer',
+  },
+  pre: {
+    whiteSpace: 'pre-wrap',
+    background: '#f8fafc',
+    padding: 8,
+    borderRadius: 6,
+    border: '1px solid #eef2f7',
+    minHeight: 60,
+  },
   meta: { marginTop: 10, fontSize: 14, color: '#374151' },
   info: { marginTop: 8, fontSize: 14, color: '#2563eb' },
   error: { marginTop: 8, fontSize: 14, color: '#dc2626' },
   footer: { textAlign: 'center', marginTop: 24, color: '#6b7280' },
 
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
-  th: { textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '6px 8px', whiteSpace: 'nowrap' },
+  th: {
+    textAlign: 'left',
+    borderBottom: '1px solid #e5e7eb',
+    padding: '6px 8px',
+    whiteSpace: 'nowrap',
+  },
   td: { borderBottom: '1px solid #f3f4f6', padding: '6px 8px', verticalAlign: 'top' },
   tdMono: { borderBottom: '1px solid #f3f4f6', padding: '6px 8px', fontFamily: 'monospace' },
 };

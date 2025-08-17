@@ -3,7 +3,7 @@
 // Задачи: submit → polling → aggregate → FSM → retry → finalize
 // Принципы: MANIFEST-FIRST, агрегация по SID, строгие контракты, явная FSM
 
-import { useReducer, useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 // API-клиент и ошибки
 import { apiClient, ApiError } from '../api/client';
@@ -28,12 +28,12 @@ import {
 import { buildLvTextFromManifest, validateManifest } from '../utils/manifest';
 
 // Повторные попытки / очередь ретраев
-import { withRetry, RetryQueue } from '../utils/retry';
+import { RetryQueue, withRetry } from '../utils/retry';
 
 // Контракты типов
-import type { Manifest } from '../types/manifest';
-import type { BatchResultV1, Flashcard } from '../types/dto';
 import type { ProcessingMetrics } from '../types/core';
+import type { BatchResultV1, Flashcard } from '../types/dto';
+import type { Manifest } from '../types/manifest';
 
 // Представление результата для UI
 export type BatchResultView = {
@@ -68,7 +68,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
   // --- FSM состояние батча ---
   const [fsmState, dispatch] = useReducer(
     batchFSMReducer,
-    createInitialBatchState(manifest?.items.length || 0, manifest ? getChunksCount(manifest) : 0)
+    createInitialBatchState(manifest?.items.length || 0, manifest ? getChunksCount(manifest) : 0),
   );
 
   // --- Актуальный результат для отображения ---
@@ -130,7 +130,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       const submitRes = await withRetry(
         () => apiClient.submitBatch(manifest),
         { maxAttempts: 3 },
-        'submit-batch'
+        'submit-batch',
       );
 
       dispatch({ type: 'BATCH_STARTED' } as any);
@@ -181,7 +181,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       }
       throw new Error('Batch processing timed out');
     },
-    []
+    [],
   );
 
   /**
@@ -191,47 +191,44 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
    * - собираем LV/RU тексты
    * - запускаем очередь ретраев при необходимости
    */
-  const processBatchResult = useCallback(
-    async (m: Manifest, batchData: BatchResultV1) => {
-      const { data: aggregated, metrics } = aggregateResultsBySid(m, batchData);
+  const processBatchResult = useCallback(async (m: Manifest, batchData: BatchResultV1) => {
+    const { data: aggregated, metrics } = aggregateResultsBySid(m, batchData);
 
-      // Обновляем FSM по пришедшим элементам
-      batchData.items.forEach((it) => {
-        dispatch({ type: 'SID_RECEIVED', payload: { sid: it.sid } } as any);
-      });
+    // Обновляем FSM по пришедшим элементам
+    batchData.items.forEach((it) => {
+      dispatch({ type: 'SID_RECEIVED', payload: { sid: it.sid } } as any);
+    });
 
-      // Ошибки (частичные результаты)
-      batchData.errors?.forEach((e) => {
-        dispatch({ type: 'SID_FAILED', payload: { sid: e.sid, error: e.error } } as any);
-        const mi = m.items[e.sid];
-        if (mi && (e.error || '').toUpperCase() !== 'PERMANENT_FAILURE') {
-          retryQueue.current.enqueue(e.sid, mi.lv, new ApiError(e.error, e.errorCode || 'UNKNOWN'));
-        }
-      });
-
-      // Сборка детерминированных текстов
-      const lvText = buildLvTextFromManifest(m, true);
-      const ruText = buildRussianTextFromAggregation(m, aggregated, true);
-      const cards = extractAllFlashcards(aggregated);
-
-      setBatchResult({ lvText, ruText, cards, metrics });
-
-      // Если есть ошибки — прогоняем retry-очередь
-      if (batchData.errors?.length) {
-        await retryQueue.current.processQueue(
-          m.batchId,
-          (sid: number, _retryResult: unknown) => {
-            dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
-            // TODO: по желанию — слить retry-результат в aggregated и обновить ruText/cards
-          },
-          (sid: number, error: Error) => {
-            dispatch({ type: 'SID_FAILED', payload: { sid, error: error.message } } as any);
-          }
-        );
+    // Ошибки (частичные результаты)
+    batchData.errors?.forEach((e) => {
+      dispatch({ type: 'SID_FAILED', payload: { sid: e.sid, error: e.error } } as any);
+      const mi = m.items[e.sid];
+      if (mi && (e.error || '').toUpperCase() !== 'PERMANENT_FAILURE') {
+        retryQueue.current.enqueue(e.sid, mi.lv, new ApiError(e.error, e.errorCode || 'UNKNOWN'));
       }
-    },
-    []
-  );
+    });
+
+    // Сборка детерминированных текстов
+    const lvText = buildLvTextFromManifest(m, true);
+    const ruText = buildRussianTextFromAggregation(m, aggregated, true);
+    const cards = extractAllFlashcards(aggregated);
+
+    setBatchResult({ lvText, ruText, cards, metrics });
+
+    // Если есть ошибки — прогоняем retry-очередь
+    if (batchData.errors?.length) {
+      await retryQueue.current.processQueue(
+        m.batchId,
+        (sid: number, _retryResult: unknown) => {
+          dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
+          // TODO: по желанию — слить retry-результат в aggregated и обновить ruText/cards
+        },
+        (sid: number, error: Error) => {
+          dispatch({ type: 'SID_FAILED', payload: { sid, error: error.message } } as any);
+        },
+      );
+    }
+  }, []);
 
   /** Отмена текущей обработки */
   const cancelProcessing = useCallback(async () => {
@@ -259,14 +256,11 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
   // --- Вычисляемые значения для UI ---
   const progress = useMemo(() => FSMSelectors.getProgress(fsmState), [fsmState]); // 0..1
   const sidCounts = useMemo(() => FSMSelectors.getSidStateCounts(fsmState), [fsmState]);
-  const processingTime = useMemo(
-    () => FSMSelectors.getProcessingTime(fsmState) ?? 0,
-    [fsmState]
-  );
+  const processingTime = useMemo(() => FSMSelectors.getProcessingTime(fsmState) ?? 0, [fsmState]);
 
-  const isProcessing =
-    fsmState.batchState === 'in_progress' || fsmState.batchState === 'submitted';
-  const canStart = !!manifest && (fsmState.batchState === 'idle' || fsmState.batchState === 'failed');
+  const isProcessing = fsmState.batchState === 'in_progress' || fsmState.batchState === 'submitted';
+  const canStart =
+    !!manifest && (fsmState.batchState === 'idle' || fsmState.batchState === 'failed');
   const canCancel = fsmState.batchState === 'in_progress' || fsmState.batchState === 'submitted';
 
   return {

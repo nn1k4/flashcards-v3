@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { buildManifest } from '../../utils/manifest';
-import { aggregateResultsBySid, buildRussianTextFromAggregation } from '../../utils/aggregator';
+import { describe, expect, it } from 'vitest';
 import type { BatchResultV1 } from '../../types/dto';
+import { aggregateResultsBySid, buildRussianTextFromAggregation } from '../../utils/aggregator';
+import { buildManifest } from '../../utils/manifest';
 
 describe('Aggregator — order invariants', () => {
   it('RU следует порядку SID из манифеста независимо от JSONL', () => {
@@ -10,9 +10,9 @@ describe('Aggregator — order invariants', () => {
       schemaVersion: 1,
       batchId: manifest.batchId,
       items: [
-      { sid: 2, sig: manifest.items[2]!.sig, russian: 'Третий.' },
-      { sid: 0, sig: manifest.items[0]!.sig, russian: 'Первый.' },
-      { sid: 1, sig: manifest.items[1]!.sig, russian: 'Второй.' },
+        { sid: 2, sig: manifest.items[2]!.sig, russian: 'Третий.' },
+        { sid: 0, sig: manifest.items[0]!.sig, russian: 'Первый.' },
+        { sid: 1, sig: manifest.items[1]!.sig, russian: 'Второй.' },
       ],
     };
     const { data, metrics } = aggregateResultsBySid(manifest, batch);

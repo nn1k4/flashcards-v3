@@ -2,13 +2,13 @@
 // Генерация/валидация манифеста и служебные функции
 
 import { v4 as uuidv4 } from 'uuid';
-import type { Manifest, ManifestItem, ManifestInvariants } from '../types/manifest';
+import type { Manifest, ManifestInvariants, ManifestItem } from '../types/manifest';
 import { ZManifest } from '../types/manifest';
 import {
-  splitIntoSentencesDeterministic,
-  validateSplitterInvariant,
   createSignature,
   normalizeText,
+  splitIntoSentencesDeterministic,
+  validateSplitterInvariant,
 } from './splitter';
 
 /**
@@ -16,10 +16,7 @@ import {
  * SID — последовательные номера [0..n-1], chunkIndex считается по maxSentencesPerChunk.
  * КРИТИЧНО: LV-текст в системе далее всегда восстанавливается из manifest.items.
  */
-export function buildManifest(
-  sourceText: string,
-  maxSentencesPerChunk: number = 20
-): Manifest {
+export function buildManifest(sourceText: string, maxSentencesPerChunk: number = 20): Manifest {
   const batchId = uuidv4();
   const sentences = splitIntoSentencesDeterministic(sourceText);
 
@@ -60,15 +57,15 @@ export function buildManifest(
 /** Восстановление LV-текста ТОЛЬКО из манифеста. */
 export function buildLvTextFromManifest(manifest: Manifest, useNewlines: boolean = true): string {
   const sep = useNewlines ? '\n' : ' ';
-  return manifest.items.map(i => i.lv).join(sep);
+  return manifest.items.map((i) => i.lv).join(sep);
 }
 
 /** Группировка элементов манифеста по чанкам для отправки в LLM. */
 export function getManifestChunks(
-  manifest: Manifest
+  manifest: Manifest,
 ): Array<{ chunkIndex: number; items: ManifestItem[] }> {
   const byChunk = new Map<number, ManifestItem[]>();
-  manifest.items.forEach(it => {
+  manifest.items.forEach((it) => {
     if (!byChunk.has(it.chunkIndex)) byChunk.set(it.chunkIndex, []);
     byChunk.get(it.chunkIndex)!.push(it);
   });
@@ -96,7 +93,7 @@ export function validateManifest(manifest: Manifest): ManifestInvariants {
   };
 
   // 2) SID: 0..n-1 и уникальны
-  const sids = manifest.items.map(i => i.sid);
+  const sids = manifest.items.map((i) => i.sid);
   const expected = Array.from({ length: sids.length }, (_, i) => i);
   if (JSON.stringify(sids) !== JSON.stringify(expected)) {
     invariants.sidSequential = false;
@@ -107,7 +104,7 @@ export function validateManifest(manifest: Manifest): ManifestInvariants {
   }
 
   // 3) Сигнатуры соответствуют тексту
-  manifest.items.forEach(item => {
+  manifest.items.forEach((item) => {
     const expectedSig = createSignature(item.lv, item.sid);
     if (item.sig !== expectedSig) {
       invariants.signaturesValid = false;
@@ -116,14 +113,14 @@ export function validateManifest(manifest: Manifest): ManifestInvariants {
   });
 
   // 4) source соответствует конкатенации lv (после normalizeText)
-  const rebuilt = manifest.items.map(i => i.lv).join(' ');
+  const rebuilt = manifest.items.map((i) => i.lv).join(' ');
   if (normalizeText(rebuilt) !== normalizeText(manifest.source)) {
     invariants.sourceMatches = false;
     throw new Error('Manifest invariant violated: source text does not match items');
   }
 
   // 5) Нет пустых lv
-  if (manifest.items.some(i => !i.lv.trim())) {
+  if (manifest.items.some((i) => !i.lv.trim())) {
     invariants.noEmptyItems = false;
     throw new Error('Manifest invariant violated: empty items found');
   }
@@ -139,11 +136,11 @@ export function getManifestStats(manifest: Manifest): {
   maxChunkSize: number;
 } {
   const totalSentences = manifest.items.length;
-  const chunkIds = new Set(manifest.items.map(i => i.chunkIndex));
+  const chunkIds = new Set(manifest.items.map((i) => i.chunkIndex));
   const totalChunks = chunkIds.size;
 
-  const sizes = Array.from(chunkIds).map(ci =>
-    manifest.items.filter(i => i.chunkIndex === ci).length
+  const sizes = Array.from(chunkIds).map(
+    (ci) => manifest.items.filter((i) => i.chunkIndex === ci).length,
   );
 
   return {

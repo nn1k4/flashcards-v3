@@ -143,7 +143,9 @@ export const FSMSelectors = {
   },
 
   /** Распределение состояний SID. */
-  getSidStateCounts: (state: BatchFSMState): {
+  getSidStateCounts: (
+    state: BatchFSMState,
+  ): {
     pending: number;
     received: number;
     invalid: number;
@@ -151,7 +153,7 @@ export const FSMSelectors = {
     skipped: number;
   } => {
     const counts = { pending: 0, received: 0, invalid: 0, retrying: 0, skipped: 0 };
-    state.perSid.forEach(s => {
+    state.perSid.forEach((s) => {
       if (s in counts) (counts as any)[s]++; // s ∈ {'pending','received','invalid','retrying','skipped'}
     });
     return counts;
@@ -172,7 +174,7 @@ export const FSMSelectors = {
 
   /** Есть ли критические ошибки (sid = -1). */
   hasCriticalErrors: (state: BatchFSMState): boolean => {
-    return state.errors.some(e => e.sid === -1);
+    return state.errors.some((e) => e.sid === -1);
   },
 };
 

@@ -28,7 +28,7 @@ function nextDelay(attempt: number, cfg: RetryConfig): number {
 export async function withRetry<T>(
   operation: () => Promise<T>,
   config: Partial<RetryConfig> = {},
-  operationName: string = 'operation'
+  operationName: string = 'operation',
 ): Promise<T> {
   // Удовлетворяем noUnusedParameters, не меняя поведения
   void operationName;
@@ -45,7 +45,7 @@ export async function withRetry<T>(
       await new Promise((r) => setTimeout(r, nextDelay(attempt, cfg)));
     }
   }
-  throw (lastErr instanceof Error ? lastErr : new Error('withRetry failed'));
+  throw lastErr instanceof Error ? lastErr : new Error('withRetry failed');
 }
 
 export class RetryQueue {
@@ -62,7 +62,7 @@ export class RetryQueue {
   async processQueue(
     _batchId: string,
     onSuccess: (sid: number, result: unknown) => void,
-    onFailure: (sid: number, error: Error) => void
+    onFailure: (sid: number, error: Error) => void,
   ): Promise<void> {
     void onSuccess;
     for (const item of this.q) {
