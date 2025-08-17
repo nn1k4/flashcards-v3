@@ -1,68 +1,81 @@
 // src/utils/aggregator.ts
-// Агрегация результатов JSONL по SID независимо от порядка прихода
+// Агрегатор результатов по SID + каноникализация RU + метрики
+// ВАЖНО: MANIFEST-FIRST — LV текст и порядок всегда из манифеста.
+
 import type { Manifest } from '../types/manifest';
-import type { BatchResultV1, Flashcard } from '../types/dto';
+import type { BatchResultV1, BatchResultItemV1, Flashcard } from '../types/dto';
 import type { ProcessingMetrics } from '../types/core';
 import { normalizeText } from './splitter';
 
-export type AggregatedBySid = Map<
-  number,
-  {
-    ru: string[];
-    cards: Flashcard[];
-    warnings: string[];
-  }
->;
+// Структура накопленных данных по каждому SID
+export type AggregatedBySid = Map<number, {
+  ru: string[];         // варианты русского перевода для данного SID
+  cards: Flashcard[];   // карточки, обогащённые контекстом sid/sig
+  warnings: string[];   // предупреждения от LLM
+}>;
 
-/** Канонизация русских вариантов по частоте и длине (без учёта финальной пунктуации). */
-export function pickCanonicalRussian(variants: string[], ensureDot: boolean = true): string {
+/**
+ * Канонический выбор русского предложения.
+ * Идея:
+ * - нормализуем и снимаем финальную пунктуацию → ключ
+ * - считаем частоты по ключу; при равной частоте берём более длинный оригинал
+ * - при необходимости гарантируем финальную точку
+ */
+export function pickCanonicalRussian(
+  variants: string[],
+  ensureDot: boolean = true
+): string {
   if (variants.length === 0) return '';
-  if (variants.length === 1) return ensureDotIfNeeded(variants[0]!, ensureDot);
+  if (variants.length === 1) return ensureEnding(variants[0]!, ensureDot);
 
-  const freq = new Map<string, { count: number; original: string; length: number }>();
+  const freq = new Map<string, { count: number; orig: string; len: number }>();
   for (const v of variants) {
-    const trimmed = v.trim();
-    if (!trimmed) continue;
-
-    const key = normalizeText(trimmed).toLowerCase().replace(/[.!?…]+$/, '');
+    const t = v.trim();
+    if (!t) continue;
+    const key = normalizeText(t).toLowerCase().replace(/[.!?…]+$/, '');
     if (!key) continue;
 
-    const ex = freq.get(key);
-    if (ex) {
-      ex.count++;
-      if (trimmed.length > ex.length) {
-        ex.original = trimmed;
-        ex.length = trimmed.length;
+    const prev = freq.get(key);
+    if (prev) {
+      prev.count++;
+      if (t.length > prev.len) {
+        prev.orig = t;
+        prev.len = t.length;
       }
     } else {
-      freq.set(key, { count: 1, original: trimmed, length: trimmed.length });
+      freq.set(key, { count: 1, orig: t, len: t.length });
     }
   }
 
-  // Лучший — с наибольшей частотой, при равенстве — длиннее
-  let best: { count: number; original: string; length: number } | null = null;
+  let best: { count: number; orig: string; len: number } | null = null;
   for (const v of freq.values()) {
-    if (!best || v.count > best.count || (v.count === best.count && v.length > best.length)) {
+    if (!best || v.count > best.count || (v.count === best.count && v.len > best.len)) {
       best = v;
     }
   }
-  return best ? ensureDotIfNeeded(best.original, ensureDot) : '';
+  return best ? ensureEnding(best.orig, ensureDot) : '';
 }
 
-function ensureDotIfNeeded(text: string, ensureDot: boolean): string {
-  if (!ensureDot || !text) return text;
-  return /[.!?…]$/.test(text) ? text : text + '.';
+function ensureEnding(text: string, ensureDot: boolean): string {
+  if (!ensureDot) return text;
+  return /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
 /**
- * Агрегация результатов по SID — КЛЮЧЕВАЯ функция архитектуры.
- * Возвращает агрегированные данные и метрики качества/целостности.
+ * Ядро агрегации: принимаем batch, группируем по SID, считаем метрики.
+ * Порядок JSONL НЕ важен — агрегируем в Map по SID и берём LV/порядок из манифеста.
  */
 export function aggregateResultsBySid(
   manifest: Manifest,
-  batchResult: BatchResultV1
+  batch: BatchResultV1
 ): { data: AggregatedBySid; metrics: ProcessingMetrics } {
+  // Инициализация «пустых» бакетов для каждого SID из манифеста
   const aggregated: AggregatedBySid = new Map();
+  for (const it of manifest.items) {
+    aggregated.set(it.sid, { ru: [], cards: [], warnings: [] });
+  }
+
+  // Инициализация метрик
   const metrics: ProcessingMetrics = {
     totalSids: manifest.items.length,
     receivedSids: 0,
@@ -73,86 +86,108 @@ export function aggregateResultsBySid(
     schemaViolations: 0,
   };
 
-  // Инициализировать все SID (даже те, что не пришли)
-  manifest.items.forEach(mi => {
-    aggregated.set(mi.sid, { ru: [], cards: [], warnings: [] });
-  });
+  // Обработка результатов из batch
+  for (const item of batch.items) {
+    applyResultItem(manifest, aggregated, metrics, item);
+  }
 
-  // Складываем пришедшие элементы (порядок не важен)
-  batchResult.items.forEach(ri => {
-    const mi = manifest.items[ri.sid];
-    if (!mi) {
-      // неизвестный SID — нарушение контракта
-      metrics.schemaViolations++;
-      return;
-    }
-
-    // Сигнатура
-    if (mi.sig !== ri.sig) {
-      metrics.invalidSigs++;
-    }
-
-    const bucket = aggregated.get(ri.sid)!;
-
-    // Русский перевод
-    if (typeof ri.russian === 'string') {
-      const ru = ri.russian.trim();
-      if (ru) {
-        if (bucket.ru.includes(ru)) metrics.duplicateRussian++;
-        else bucket.ru.push(ru);
-      } else {
-        metrics.emptyRussian++;
-      }
-    }
-
-    // Карточки
-    if (Array.isArray(ri.cards) && ri.cards.length) {
-      const enriched = ri.cards.map(c => ({
-        ...c,
-        contexts: (c.contexts || []).map(ctx => ({
-          ...ctx,
-          // добавляем атрибуты привязки к предложению
-          sid: ri.sid,
-          sig: ri.sig,
-        })),
-      }));
-      bucket.cards.push(...enriched);
+  // Подсчёт финальных метрик
+  aggregated.forEach((data) => {
+    if (data.ru.length > 0 || data.cards.length > 0) {
+      metrics.receivedSids++;
+    } else {
+      metrics.missingSids++;
     }
   });
-
-  // Подсчёт полученных/пропущенных
-  metrics.receivedSids = Array.from(aggregated.entries()).reduce(
-    (acc, [, v]) => acc + (v.ru.length > 0 || v.cards.length > 0 ? 1 : 0),
-    0
-  );
-  metrics.missingSids = metrics.totalSids - metrics.receivedSids;
 
   return { data: aggregated, metrics };
 }
 
-/** Сборка RU-текста по порядку SID из манифеста. */
+/**
+ * Обработка одного элемента результата: сигнатуры, RU, карточки, предупреждения.
+ * Нарушения схемы/неизвестный SID считаем как schemaViolations.
+ */
+function applyResultItem(
+  manifest: Manifest,
+  aggregated: AggregatedBySid,
+  metrics: ProcessingMetrics,
+  item: BatchResultItemV1
+): void {
+  const manifestItem = manifest.items[item.sid];
+
+  // Неизвестный SID — нарушение схемы
+  if (!manifestItem) {
+    metrics.schemaViolations++;
+    return;
+  }
+
+  // Проверка сигнатуры (не прерывает обработку)
+  if (manifestItem.sig !== item.sig) {
+    metrics.invalidSigs++;
+  }
+
+  const bucket = aggregated.get(item.sid)!;
+
+  // Русский перевод
+  if (item.russian !== undefined) {
+    const trimmed = item.russian.trim();
+    if (!trimmed) {
+      metrics.emptyRussian++;
+    } else if (bucket.ru.includes(trimmed)) {
+      metrics.duplicateRussian++;
+    } else {
+      bucket.ru.push(trimmed);
+    }
+  }
+
+  // Карточки — обогащаем контекстами sid/sig
+  if (item.cards?.length) {
+    const enriched = item.cards.map(card => ({
+      ...card,
+      contexts: card.contexts.map(ctx => ({
+        ...ctx,
+        sid: item.sid,
+        sig: item.sig,
+      })),
+    }));
+    bucket.cards.push(...enriched);
+  }
+
+  // Предупреждения
+  if (item.warnings?.length) {
+    bucket.warnings.push(...item.warnings);
+  }
+}
+
+/**
+ * Итоговая сборка русского текста строго по порядку SID из манифеста.
+ * Отсутствующие переводы пропускаем (не вставляем заглушки).
+ */
 export function buildRussianTextFromAggregation(
   manifest: Manifest,
   aggregated: AggregatedBySid,
   useNewlines: boolean = true
 ): string {
   const sep = useNewlines ? '\n' : ' ';
-  const lines = manifest.items
-    .map(mi => pickCanonicalRussian(aggregated.get(mi.sid)?.ru || [], true))
-    .filter(Boolean);
-  return lines.join(sep);
+  const parts: string[] = [];
+
+  for (const mi of manifest.items) {
+    const b = aggregated.get(mi.sid);
+    if (!b || b.ru.length === 0) continue;
+    parts.push(pickCanonicalRussian(b.ru, true));
+  }
+
+  return parts.join(sep);
 }
 
-/** Все флэшкарты из агрегированных данных. */
+/** Извлечение всех карточек из агрегированных данных. */
 export function extractAllFlashcards(aggregated: AggregatedBySid): Flashcard[] {
   const out: Flashcard[] = [];
-  aggregated.forEach(v => {
-    out.push(...v.cards);
-  });
+  aggregated.forEach((v) => { out.push(...v.cards); });
   return out;
 }
 
-/** Вспомогательная статистика по агрегации. */
+/** Диагностическая статистика по агрегированному набору. */
 export function getAggregationStats(aggregated: AggregatedBySid): {
   totalSids: number;
   sidsWithRussian: number;
@@ -165,9 +200,9 @@ export function getAggregationStats(aggregated: AggregatedBySid): {
   let totalCards = 0;
   let totalWarnings = 0;
 
-  aggregated.forEach(v => {
-    if (v.ru.length > 0) sidsWithRussian++;
-    if (v.cards.length > 0) sidsWithCards++;
+  aggregated.forEach((v) => {
+    if (v.ru.length) sidsWithRussian++;
+    if (v.cards.length) sidsWithCards++;
     totalCards += v.cards.length;
     totalWarnings += v.warnings.length;
   });
