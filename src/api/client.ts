@@ -1,21 +1,28 @@
 // src/api/client.ts
+// HTTP-клиент для батч-пайплайна (Manifest-First / Strict Contracts)
+// - Безопасные таймауты/отмена (AbortController)
+// - Явные коды ошибок и признак retryable
+// - Жёсткая Zod-валидация результата (ZBatchResultV1)
+// - Поддержка модели через заголовок X-LLM-Model (по умолчанию: "claude-3-haiku-20240307")
+// - Обратная совместимость по форме тела: { manifest }
+
 import { ZBatchResultV1, type BatchResultV1 } from '../types/dto';
 import type { Manifest } from '../types/manifest';
 
+// -----------------------------
+// Ошибки и помощники по ошибкам
+// -----------------------------
 export class ApiError extends Error {
   code: string;
   retryable: boolean;
-  status?: number; // опциональное свойство
+  status?: number;
 
   constructor(message: string, code: string, retryable = false, status?: number) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.retryable = retryable;
-    // exactOptionalPropertyTypes: присваиваем ТОЛЬКО если число определено
-    if (status !== undefined) {
-      this.status = status;
-    }
+    if (status !== undefined) this.status = status;
   }
 }
 
@@ -27,23 +34,55 @@ export class SchemaValidationError extends ApiError {
   }
 }
 
+function isLikeNetworkError(err: unknown): boolean {
+  // fetch в браузерах в случае сетевой ошибки кидает TypeError
+  return err instanceof TypeError && String(err.message).toLowerCase().includes('fetch');
+}
+
+function mapHttpError(res: Response, baseMessage: string, code: string): ApiError {
+  const status = res.status;
+
+  // 429 — rate limit (ретраибельно)
+  if (status === 429) {
+    return new ApiError(`${baseMessage}: ${status} ${res.statusText}`, 'RATE_LIMIT', true, status);
+  }
+
+  // 5xx — ретраибельно
+  if (status >= 500) {
+    return new ApiError(`${baseMessage}: ${status} ${res.statusText}`, code, true, status);
+  }
+
+  // Остальные — как есть (обычно неретраибельно)
+  return new ApiError(`${baseMessage}: ${status} ${res.statusText}`, code, false, status);
+}
+
+// -----------------------------
+// Клиент
+// -----------------------------
+type ClientConfig = {
+  baseUrl?: string;
+  timeoutMs?: number;
+  model?: string; // по умолчанию: "claude-3-haiku-20240307"
+};
+
 class ClaudeApiClient {
   private baseUrl: string;
   private timeout: number;
+  private model: string;
 
-  constructor() {
-    // Только import.meta.env (браузерный путь). Fallback — '/api' (vite dev proxy).
+  constructor(cfg: ClientConfig = {}) {
     const envBase =
       (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || '/api';
 
-    this.baseUrl = String(envBase).replace(/\/+$/, '');
-    this.timeout = 15_000;
+    this.baseUrl = String(cfg.baseUrl ?? envBase).replace(/\/+$/, '');
+    this.timeout = Math.max(1000, (cfg.timeoutMs ?? 15_000) | 0);
+    this.model = cfg.model ?? 'claude-3-haiku-20240307';
   }
 
+  // Конфигурация
   setBaseUrl(url: string) {
     this.baseUrl = url.replace(/\/+$/, '');
   }
-
   getBaseUrl() {
     return this.baseUrl;
   }
@@ -51,32 +90,55 @@ class ClaudeApiClient {
   setTimeout(ms: number) {
     this.timeout = Math.max(1000, ms | 0);
   }
+  getTimeout() {
+    return this.timeout;
+  }
 
-  async submitBatch(manifest: Manifest): Promise<{ batchId: string }> {
+  setModel(model: string) {
+    this.model = model;
+  }
+  getModel() {
+    return this.model;
+  }
+
+  // -----------------------------
+  // Публичные методы
+  // -----------------------------
+
+  /**
+   * Отправка батча на сервер.
+   * Тело запроса сохраняем совместимым: { manifest }.
+   * Модель передаем неинвазивно в заголовке X-LLM-Model (сервер может игнорировать).
+   */
+  async submitBatch(manifest: Manifest): Promise<{ batchId: string; estimatedTime?: number }> {
     try {
       const res = await this.fetchWithTimeout(`${this.baseUrl}/claude/batch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-LLM-Model': this.model,
+        },
         body: JSON.stringify({ manifest }),
       });
 
       if (!res.ok) {
-        throw new ApiError(
-          `Submit failed: ${res.status} ${res.statusText}`,
-          'SUBMIT_FAILED',
-          res.status >= 500,
-          res.status,
-        );
+        throw mapHttpError(res, 'Submit failed', 'SUBMIT_FAILED');
       }
 
-      const data = (await res.json()) as { batchId?: string };
-      if (!data?.batchId) {
-        throw new ApiError('Server did not return batchId', 'SUBMIT_INVALID', false);
+      const json = await this.safeJson(res);
+      const batchId =
+        typeof (json as any)?.batchId === 'string' ? (json as any).batchId : undefined;
+      if (!batchId || !batchId.trim()) {
+        throw new ApiError('Server did not return batchId', 'SUBMIT_INVALID', false, res.status);
       }
-      return { batchId: data.batchId };
+
+      const estimatedTime =
+        typeof (json as any)?.estimatedTime === 'number' ? (json as any).estimatedTime : undefined;
+
+      return { batchId, estimatedTime };
     } catch (err: unknown) {
       if (err instanceof ApiError) throw err;
-      if (err instanceof TypeError && String(err.message).includes('fetch')) {
+      if (isLikeNetworkError(err)) {
         throw new ApiError('Network error during submit', 'NETWORK_ERROR', true);
       }
       if ((err as any)?.name === 'AbortError') throw err as any;
@@ -88,13 +150,21 @@ class ClaudeApiClient {
     }
   }
 
+  /**
+   * Получение результата батча.
+   * Спец-случаи:
+   * - 202/204 — ещё обрабатывается (retryable)
+   * - 404 — не найдено
+   * - 200 с пустым телом — трактуем как processing (retryable)
+   * - 200 c не-JSON — ошибка контракта (SchemaValidationError)
+   * - 200 c JSON, не проходящим Zod — SchemaValidationError
+   */
   async getBatchResult(batchId: string): Promise<BatchResultV1> {
     try {
       const res = await this.fetchWithTimeout(
         `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}`,
       );
 
-      // 1) Специальные статусы без тела — обрабатываем ДО любых попыток чтения JSON
       if (res.status === 202 || res.status === 204) {
         throw new ApiError(
           `Batch ${batchId} is still processing`,
@@ -107,18 +177,12 @@ class ClaudeApiClient {
         throw new ApiError(`Batch ${batchId} not found`, 'BATCH_NOT_FOUND', false, 404);
       }
       if (!res.ok) {
-        throw new ApiError(
-          `Failed to get batch result: ${res.status} ${res.statusText}`,
-          'GET_FAILED',
-          res.status >= 500,
-          res.status,
-        );
+        throw mapHttpError(res, 'Failed to get batch result', 'GET_FAILED');
       }
 
-      // 2) Читаем текст тела безопасно: некоторые прокси могут вернуть 200 с пустым телом
-      const rawText = await res.text();
-      if (!rawText || !rawText.trim()) {
-        // трактуем как "ещё обрабатывается" — повторим polling
+      const rawText = await this.readTextSafely(res);
+      if (!rawText.trim()) {
+        // Пустое тело при 200: считаем, что сервер ещё готовит результат
         throw new ApiError(
           `Batch ${batchId} has no content yet`,
           'BATCH_PROCESSING',
@@ -131,11 +195,9 @@ class ClaudeApiClient {
       try {
         raw = JSON.parse(rawText);
       } catch {
-        // Если пришёл не-JSON при 200 — это ошибка контракта
         throw new SchemaValidationError('Invalid JSON in batch result', rawText);
       }
 
-      // 3) Жёсткая Zod-валидация
       try {
         return ZBatchResultV1.parse(raw);
       } catch (e) {
@@ -143,11 +205,9 @@ class ClaudeApiClient {
       }
     } catch (err: unknown) {
       if (err instanceof ApiError) throw err;
-
-      if (err instanceof TypeError && String(err.message).includes('fetch')) {
+      if (isLikeNetworkError(err)) {
         throw new ApiError('Network error while fetching result', 'NETWORK_ERROR', true);
       }
-
       throw new ApiError(
         `Unexpected result error: ${err instanceof Error ? err.message : String(err)}`,
         'UNKNOWN_ERROR',
@@ -155,6 +215,11 @@ class ClaudeApiClient {
       );
     }
   }
+
+  /**
+   * Получение статуса батча (для удобного polling UI).
+   * Возвращает статус + опциональный прогресс/ошибку.
+   */
   async getBatchStatus(batchId: string): Promise<{
     status: 'pending' | 'processing' | 'completed' | 'failed';
     progress?: number;
@@ -164,35 +229,35 @@ class ClaudeApiClient {
       `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}/status`,
     );
     if (!res.ok) {
-      throw new ApiError(
-        `Failed to get batch status: ${res.status}`,
-        'STATUS_FAILED',
-        res.status >= 500,
-        res.status,
-      );
+      throw mapHttpError(res, 'Failed to get batch status', 'STATUS_FAILED');
     }
-    return res.json();
+    return this.safeJson(res) as Promise<{
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress?: number;
+      error?: string;
+    }>;
   }
 
+  /**
+   * Отмена батча. 404 трактуем как «уже нет/не существует» — не считаем ошибкой.
+   */
   async cancelBatch(batchId: string): Promise<void> {
     const res = await this.fetchWithTimeout(
       `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}`,
       { method: 'DELETE' },
     );
     if (!res.ok && res.status !== 404) {
-      throw new ApiError(
-        `Failed to cancel batch: ${res.status}`,
-        'CANCEL_FAILED',
-        res.status >= 500,
-        res.status,
-      );
+      throw mapHttpError(res, 'Failed to cancel batch', 'CANCEL_FAILED');
     }
   }
 
+  // -----------------------------
+  // Внутренние помощники
+  // -----------------------------
+
   private async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
+    const t = setTimeout(() => controller.abort(), this.timeout);
     try {
       return await fetch(url, { ...options, signal: controller.signal });
     } catch (err: any) {
@@ -201,17 +266,41 @@ class ClaudeApiClient {
       }
       throw err;
     } finally {
-      clearTimeout(timeoutId);
+      clearTimeout(t);
+    }
+  }
+
+  /** Безопасное чтение текста, учитывая возможные прокси-особенности. */
+  private async readTextSafely(res: Response): Promise<string> {
+    try {
+      return await res.text();
+    } catch {
+      // Редкий кейс: поток уже прочитан/закрыт прокси — трактуем как пустое тело
+      return '';
+    }
+  }
+
+  /** Безопасный JSON: при пустом теле вернёт {} (кроме тех мест, где мы интерпретируем пустое как processing). */
+  private async safeJson<T = unknown>(res: Response): Promise<T> {
+    const txt = await this.readTextSafely(res);
+    if (!txt.trim()) return {} as T;
+    try {
+      return JSON.parse(txt) as T;
+    } catch {
+      throw new SchemaValidationError('Invalid JSON body', txt);
     }
   }
 }
 
+// Экземпляр по умолчанию
 export const apiClient = new ClaudeApiClient();
 
+// Утилиты для retry/UX
 export const isRetryableError = (error: unknown): boolean =>
   error instanceof ApiError && error.retryable;
 
 export const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+// Релевантные типы
 export type { BatchResultV1 };
