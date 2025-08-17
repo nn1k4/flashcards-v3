@@ -1,0 +1,23 @@
+# --- Dependencies & build ---
+node_modules/
+dist/
+
+# --- Coverage ---
+coverage/
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Environment (keep only example) ---
+.env
+.env.*
+!.env.example
+
+# --- Logs ---
+logs
+*.log
+
+# --- OS / IDE (local convenience; root also covers these) ---
+.DS_Store
+Thumbs.db
+.idea/

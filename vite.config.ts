@@ -16,7 +16,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": { target: "http://localhost:3001", changeOrigin: true }
-    }
-  }
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        // КРИТИЧНО: снимаем /api, потому что сервер слушает /claude/*
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
 });
