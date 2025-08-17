@@ -6,8 +6,8 @@
   "prettier.configPath": ".prettierrc",
   // === Автоисправления и организация импортов при сохранении ===
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": true,
-    "source.organizeImports": true
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
   },
   // === EOL и финальные переводы строк (в унисон с .gitattributes и .editorconfig) ===
   "files.eol": "\n",
