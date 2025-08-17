@@ -72,7 +72,7 @@ function toBase64(str: string): string {
   // Браузерный путь
   if (typeof (globalThis as any).btoa === 'function') {
     // Корректная UTF-8 упаковка для btoa
-    // eslint-disable-next-line no-undef
+
     return (globalThis as any).btoa(unescape(encodeURIComponent(str)));
   }
   // Node.js путь

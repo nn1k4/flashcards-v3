@@ -73,7 +73,7 @@ function toBase64Utf8(str: string): string {
   // Браузерный путь (DOM)
   if (typeof g.btoa === 'function') {
     // Корректная UTF-8 упаковка для btoa
-    // eslint-disable-next-line no-undef
+
     return g.btoa(unescape(encodeURIComponent(str)));
   }
 
