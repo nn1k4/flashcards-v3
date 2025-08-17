@@ -1,0 +1,13 @@
+/* Tailwind v4: базовый импорт */
+@import "tailwindcss";
+
+/* Палитра primary — значения из плана (эквивалентно tailwind.config.js) */
+@theme {
+  --color-primary-50:  #eff6ff;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+}
+
+/* Базовый слой из плана можно добавить позже через @layer base,
+   но для старта оставим минимум, чтобы исключить конфликты. */
