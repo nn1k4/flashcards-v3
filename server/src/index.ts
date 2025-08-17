@@ -196,5 +196,5 @@ app.delete('/claude/batch/:batchId', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Backend listening on http://localhost:${PORT}`);
+  console.warn(`✅ Backend listening on http://localhost:${PORT}`);
 });

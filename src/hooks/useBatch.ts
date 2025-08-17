@@ -105,52 +105,14 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
   // --- Очистка при размонтировании ---
   useEffect(() => {
+    // захватываем текущие значения ref, чтобы не читать .current в cleanup
+    const ac = abortController.current;
+    const rq = retryQueue.current;
     return () => {
-      abortController.current?.abort();
-      retryQueue.current.clear();
+      ac?.abort();
+      rq?.clear();
     };
   }, []);
-
-  /**
-   * Запуск обработки батча:
-   * 1) submitBatch(manifest) с повторами
-   * 2) pollForBatchResult(batchId)
-   * 3) processBatchResult(manifest, result)
-   * 4) finalize FSM
-   */
-  const startProcessing = useCallback(async () => {
-    if (!manifest) throw new Error('Нет манифеста для обработки');
-
-    abortController.current?.abort();
-    abortController.current = new AbortController();
-
-    try {
-      dispatch({ type: 'SUBMIT_BATCH' } as any);
-
-      const submitRes = await withRetry(
-        () => apiClient.submitBatch(manifest),
-        { maxAttempts: 3 },
-        'submit-batch',
-      );
-
-      dispatch({ type: 'BATCH_STARTED' } as any);
-
-      const data = await pollForBatchResult(submitRes.batchId, abortController.current.signal);
-
-      await processBatchResult(manifest, data);
-
-      dispatch({ type: 'BATCH_COMPLETED' } as any);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        return; // отменено пользователем
-      }
-      dispatch({
-        type: 'BATCH_FAILED',
-        payload: { error: error instanceof Error ? error.message : String(error) },
-      } as any);
-      throw error;
-    }
-  }, [manifest]);
 
   /**
    * Polling результатов батча c таймаутом / backoff-ожиданием.
@@ -221,7 +183,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
         m.batchId,
         (sid: number, _retryResult: unknown) => {
           dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
-          // TODO: по желанию — слить retry-результат в aggregated и обновить ruText/cards
+          // TODO: при необходимости — слить retry-результат в aggregated и обновить ruText/cards
         },
         (sid: number, error: Error) => {
           dispatch({ type: 'SID_FAILED', payload: { sid, error: error.message } } as any);
@@ -229,6 +191,48 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       );
     }
   }, []);
+
+  /**
+   * Запуск обработки батча:
+   * 1) submitBatch(manifest) с повторами
+   * 2) pollForBatchResult(batchId)
+   * 3) processBatchResult(manifest, result)
+   * 4) finalize FSM
+   */
+  const startProcessing = useCallback(async () => {
+    if (!manifest) throw new Error('Нет манифеста для обработки');
+
+    // новый контроллер, старый — отменяем
+    abortController.current?.abort();
+    abortController.current = new AbortController();
+
+    try {
+      dispatch({ type: 'SUBMIT_BATCH' } as any);
+
+      const submitRes = await withRetry(
+        () => apiClient.submitBatch(manifest),
+        { maxAttempts: 3 },
+        'submit-batch',
+      );
+
+      dispatch({ type: 'BATCH_STARTED' } as any);
+
+      const data = await pollForBatchResult(submitRes.batchId, abortController.current.signal);
+
+      await processBatchResult(manifest, data);
+
+      dispatch({ type: 'BATCH_COMPLETED' } as any);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return; // отменено пользователем
+      }
+      dispatch({
+        type: 'BATCH_FAILED',
+        payload: { error: error instanceof Error ? error.message : String(error) },
+      } as any);
+      throw error;
+    }
+  }, [manifest, pollForBatchResult, processBatchResult]);
 
   /** Отмена текущей обработки */
   const cancelProcessing = useCallback(async () => {
