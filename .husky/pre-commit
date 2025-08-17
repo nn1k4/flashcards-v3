@@ -1,2 +1,2 @@
-# husky v9+ hook (без shebang и без husky.sh)
-npm run -s lint-staged:run
+# husky v9+ hook: без shebang и без husky.sh
+node scripts/precommit.mjs
