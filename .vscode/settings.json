@@ -1,15 +1,66 @@
 {
+  // === Prettier как главный форматтер ===
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
-  "editor.codeActionsOnSave": {
-    "source.organizeImports": true
-  },
   "prettier.enable": true,
   "prettier.configPath": ".prettierrc",
-  // чтобы не форматировать большие артефакты в preview
+  // === Автоисправления и организация импортов при сохранении ===
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true,
+    "source.organizeImports": true
+  },
+  // === EOL и финальные переводы строк (в унисон с .gitattributes и .editorconfig) ===
+  "files.eol": "\n",
+  "files.trimFinalNewlines": true,
+  "files.insertFinalNewline": true,
+  // === ESLint v9 (flat config) интеграция ===
+  "eslint.useFlatConfig": true,
+  "eslint.format.enable": false,
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  // === Использовать TypeScript из workspace (чтобы версии совпадали) ===
+  "typescript.tsdk": "node_modules/typescript/lib",
+  // === Исключения из обозревателя/поиска/ватчера, чтобы не тормозило ===
   "files.exclude": {
     "**/node_modules": true,
     "**/dist": true,
     "server/dist": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "server/dist": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "server/dist/**": true
+  },
+  // === Качество жизни ===
+  "editor.rulers": [
+    100
+  ],
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.trimAutoWhitespace": true,
+  // === Привязка форматтера к типам файлов ===
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.wordWrap": "on"
+  },
+  "[typescript]": {
+    "editor.formatOnSave": true
+  },
+  "[typescriptreact]": {
+    "editor.formatOnSave": true
   }
 }
