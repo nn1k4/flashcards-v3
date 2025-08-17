@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Windows-скрипты с CRLF
+*.bat eol=crlf
+*.cmd eol=crlf
+*.ps1 eol=crlf
+
+# Bash-скрипты с LF
+*.sh eol=lf
