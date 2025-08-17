@@ -1,5 +1,6 @@
 // src/utils/manifest.ts
 // Генерация/валидация манифеста и служебные функции
+
 import { v4 as uuidv4 } from 'uuid';
 import type { Manifest, ManifestItem, ManifestInvariants } from '../types/manifest';
 import { ZManifest } from '../types/manifest';
@@ -13,6 +14,7 @@ import {
 /**
  * Создаёт манифест — ЕДИНСТВЕННЫЙ источник истины для порядка предложений.
  * SID — последовательные номера [0..n-1], chunkIndex считается по maxSentencesPerChunk.
+ * КРИТИЧНО: LV-текст в системе далее всегда восстанавливается из manifest.items.
  */
 export function buildManifest(
   sourceText: string,
@@ -36,7 +38,7 @@ export function buildManifest(
     return {
       sid,
       lv,
-      sig: createSignature(lv, sid),
+      sig: createSignature(lv, sid), // полный base64 от "<normalized>#<sid>"
       chunkIndex,
     };
   });
@@ -113,7 +115,7 @@ export function validateManifest(manifest: Manifest): ManifestInvariants {
     }
   });
 
-  // 4) source соответствует конкатенации lv
+  // 4) source соответствует конкатенации lv (после normalizeText)
   const rebuilt = manifest.items.map(i => i.lv).join(' ');
   if (normalizeText(rebuilt) !== normalizeText(manifest.source)) {
     invariants.sourceMatches = false;
@@ -139,7 +141,10 @@ export function getManifestStats(manifest: Manifest): {
   const totalSentences = manifest.items.length;
   const chunkIds = new Set(manifest.items.map(i => i.chunkIndex));
   const totalChunks = chunkIds.size;
-  const sizes = Array.from(chunkIds).map(ci => manifest.items.filter(i => i.chunkIndex === ci).length);
+
+  const sizes = Array.from(chunkIds).map(ci =>
+    manifest.items.filter(i => i.chunkIndex === ci).length
+  );
 
   return {
     totalSentences,

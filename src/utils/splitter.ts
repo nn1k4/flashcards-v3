@@ -40,6 +40,7 @@ export function splitIntoSentencesDeterministic(text: string): string[] {
       if (!next || /\s/.test(next)) {
         sentences.push(current.trim());
         current = '';
+
         // Пропустить хвостовые пробелы
         while (i + 1 < normalized.length && /\s/.test(normalized[i + 1]!)) i++;
       }
@@ -89,12 +90,13 @@ function toBase64Utf8(str: string): string {
 
 /**
  * Создание стабильной сигнатуры для предложения:
- * base64 от "<normalized>#<sid>", усечённая до 16 символов.
+ * base64 от "<normalized>#<sid>" (БЕЗ усечения).
+ * Важно: единая точка истины для алгоритма сигнатуры.
  */
 export function createSignature(text: string, sid: number): string {
   const normalized = normalizeText(text);
   const content = `${normalized}#${sid}`;
-  return toBase64Utf8(content).slice(0, 16);
+  return toBase64Utf8(content); // полный base64 по плану (без slice)
 }
 
 // Экспорт для тестов
