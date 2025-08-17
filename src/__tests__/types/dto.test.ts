@@ -9,7 +9,8 @@ describe("DTO contracts (V1)", () => {
       items: [{ sid: 0, sig: "abc", russian: "Привет" }],
     };
     const parsed = ZBatchResultV1.parse(payload);
-    expect(parsed.items[0].sid).toBe(0);
+    expect(parsed.items.length).toBeGreaterThan(0);
+    expect(parsed.items[0]!.sid).toBe(0);
     expect(parsed.batchId).toBe("batch-1");
   });
 
