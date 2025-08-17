@@ -7,26 +7,16 @@ import type { BatchResultV1, BatchResultItemV1, Flashcard } from '../types/dto';
 import type { ProcessingMetrics } from '../types/core';
 import { normalizeText } from './splitter';
 
-// Структура накопленных данных по каждому SID
 export type AggregatedBySid = Map<number, {
-  ru: string[];         // варианты русского перевода для данного SID
-  cards: Flashcard[];   // карточки, обогащённые контекстом sid/sig
-  warnings: string[];   // предупреждения от LLM
+  ru: string[];
+  cards: Flashcard[];
+  warnings: string[];
 }>;
 
-/**
- * Канонический выбор русского предложения.
- * Идея:
- * - нормализуем и снимаем финальную пунктуацию → ключ
- * - считаем частоты по ключу; при равной частоте берём более длинный оригинал
- * - при необходимости гарантируем финальную точку
- */
-export function pickCanonicalRussian(
-  variants: string[],
-  ensureDot: boolean = true
-): string {
+/** Канонический выбор RU по частоте и длине; при необходимости добавляем финальную точку. */
+export function pickCanonicalRussian(variants: string[], ensureDot: boolean = true): string {
   if (variants.length === 0) return '';
-  if (variants.length === 1) return ensureEnding(variants[0]!, ensureDot);
+  if (variants.length === 1) return ensureDot ? ensureEnding(variants[0]!) : variants[0]!;
 
   const freq = new Map<string, { count: number; orig: string; len: number }>();
   for (const v of variants) {
@@ -38,10 +28,7 @@ export function pickCanonicalRussian(
     const prev = freq.get(key);
     if (prev) {
       prev.count++;
-      if (t.length > prev.len) {
-        prev.orig = t;
-        prev.len = t.length;
-      }
+      if (t.length > prev.len) { prev.orig = t; prev.len = t.length; }
     } else {
       freq.set(key, { count: 1, orig: t, len: t.length });
     }
@@ -49,33 +36,56 @@ export function pickCanonicalRussian(
 
   let best: { count: number; orig: string; len: number } | null = null;
   for (const v of freq.values()) {
-    if (!best || v.count > best.count || (v.count === best.count && v.len > best.len)) {
-      best = v;
-    }
+    if (!best || v.count > best.count || (v.count === best.count && v.len > best.len)) best = v;
   }
-  return best ? ensureEnding(best.orig, ensureDot) : '';
+  if (!best) return '';
+  return ensureDot ? ensureEnding(best.orig) : best.orig;
 }
 
-function ensureEnding(text: string, ensureDot: boolean): string {
-  if (!ensureDot) return text;
+function ensureEnding(text: string): string {
   return /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
-/**
- * Ядро агрегации: принимаем batch, группируем по SID, считаем метрики.
- * Порядок JSONL НЕ важен — агрегируем в Map по SID и берём LV/порядок из манифеста.
- */
+/** Обработать один элемент результата: сигнатуры, RU, карточки, предупреждения. */
+function applyResultItem(
+  manifest: Manifest,
+  aggregated: AggregatedBySid,
+  metrics: ProcessingMetrics,
+  item: BatchResultItemV1
+): void {
+  const manifestItem = manifest.items[item.sid];
+  if (!manifestItem) { metrics.schemaViolations++; return; }
+
+  if (manifestItem.sig !== item.sig) metrics.invalidSigs++; // фиксируем, но продолжаем
+
+  const bucket = aggregated.get(item.sid)!;
+
+  if (item.russian !== undefined) {
+    const trimmed = item.russian.trim();
+    if (!trimmed) metrics.emptyRussian++;
+    else if (bucket.ru.includes(trimmed)) metrics.duplicateRussian++;
+    else bucket.ru.push(trimmed);
+  }
+
+  if (item.cards?.length) {
+    const enriched = item.cards.map(card => ({
+      ...card,
+      contexts: card.contexts.map(ctx => ({ ...ctx, sid: item.sid, sig: item.sig })),
+    }));
+    bucket.cards.push(...enriched);
+  }
+
+  if (item.warnings?.length) bucket.warnings.push(...item.warnings);
+}
+
+/** Ядро: агрегируем по SID независимо от порядка JSONL и считаем метрики. */
 export function aggregateResultsBySid(
   manifest: Manifest,
   batch: BatchResultV1
 ): { data: AggregatedBySid; metrics: ProcessingMetrics } {
-  // Инициализация «пустых» бакетов для каждого SID из манифеста
   const aggregated: AggregatedBySid = new Map();
-  for (const it of manifest.items) {
-    aggregated.set(it.sid, { ru: [], cards: [], warnings: [] });
-  }
+  for (const it of manifest.items) aggregated.set(it.sid, { ru: [], cards: [], warnings: [] });
 
-  // Инициализация метрик
   const metrics: ProcessingMetrics = {
     totalSids: manifest.items.length,
     receivedSids: 0,
@@ -86,132 +96,34 @@ export function aggregateResultsBySid(
     schemaViolations: 0,
   };
 
-  // Обработка результатов из batch
-  for (const item of batch.items) {
-    applyResultItem(manifest, aggregated, metrics, item);
-  }
+  for (const item of batch.items) applyResultItem(manifest, aggregated, metrics, item);
 
-  // Подсчёт финальных метрик
-  aggregated.forEach((data) => {
-    if (data.ru.length > 0 || data.cards.length > 0) {
-      metrics.receivedSids++;
-    } else {
-      metrics.missingSids++;
-    }
+  aggregated.forEach(b => {
+    if (b.ru.length || b.cards.length) metrics.receivedSids++; else metrics.missingSids++;
   });
 
   return { data: aggregated, metrics };
 }
 
-/**
- * Обработка одного элемента результата: сигнатуры, RU, карточки, предупреждения.
- * Нарушения схемы/неизвестный SID считаем как schemaViolations.
- */
-function applyResultItem(
-  manifest: Manifest,
-  aggregated: AggregatedBySid,
-  metrics: ProcessingMetrics,
-  item: BatchResultItemV1
-): void {
-  const manifestItem = manifest.items[item.sid];
-
-  // Неизвестный SID — нарушение схемы
-  if (!manifestItem) {
-    metrics.schemaViolations++;
-    return;
-  }
-
-  // Проверка сигнатуры (не прерывает обработку)
-  if (manifestItem.sig !== item.sig) {
-    metrics.invalidSigs++;
-  }
-
-  const bucket = aggregated.get(item.sid)!;
-
-  // Русский перевод
-  if (item.russian !== undefined) {
-    const trimmed = item.russian.trim();
-    if (!trimmed) {
-      metrics.emptyRussian++;
-    } else if (bucket.ru.includes(trimmed)) {
-      metrics.duplicateRussian++;
-    } else {
-      bucket.ru.push(trimmed);
-    }
-  }
-
-  // Карточки — обогащаем контекстами sid/sig
-  if (item.cards?.length) {
-    const enriched = item.cards.map(card => ({
-      ...card,
-      contexts: card.contexts.map(ctx => ({
-        ...ctx,
-        sid: item.sid,
-        sig: item.sig,
-      })),
-    }));
-    bucket.cards.push(...enriched);
-  }
-
-  // Предупреждения
-  if (item.warnings?.length) {
-    bucket.warnings.push(...item.warnings);
-  }
-}
-
-/**
- * Итоговая сборка русского текста строго по порядку SID из манифеста.
- * Отсутствующие переводы пропускаем (не вставляем заглушки).
- */
+/** Сборка RU строго по порядку SID из манифеста. */
 export function buildRussianTextFromAggregation(
   manifest: Manifest,
   aggregated: AggregatedBySid,
   useNewlines: boolean = true
 ): string {
   const sep = useNewlines ? '\n' : ' ';
-  const parts: string[] = [];
-
+  const out: string[] = [];
   for (const mi of manifest.items) {
     const b = aggregated.get(mi.sid);
     if (!b || b.ru.length === 0) continue;
-    parts.push(pickCanonicalRussian(b.ru, true));
+    out.push(pickCanonicalRussian(b.ru, true));
   }
-
-  return parts.join(sep);
+  return out.join(sep);
 }
 
-/** Извлечение всех карточек из агрегированных данных. */
+/** Извлечь все карточки. */
 export function extractAllFlashcards(aggregated: AggregatedBySid): Flashcard[] {
   const out: Flashcard[] = [];
-  aggregated.forEach((v) => { out.push(...v.cards); });
+  aggregated.forEach(v => out.push(...v.cards));
   return out;
-}
-
-/** Диагностическая статистика по агрегированному набору. */
-export function getAggregationStats(aggregated: AggregatedBySid): {
-  totalSids: number;
-  sidsWithRussian: number;
-  sidsWithCards: number;
-  totalCards: number;
-  totalWarnings: number;
-} {
-  let sidsWithRussian = 0;
-  let sidsWithCards = 0;
-  let totalCards = 0;
-  let totalWarnings = 0;
-
-  aggregated.forEach((v) => {
-    if (v.ru.length) sidsWithRussian++;
-    if (v.cards.length) sidsWithCards++;
-    totalCards += v.cards.length;
-    totalWarnings += v.warnings.length;
-  });
-
-  return {
-    totalSids: aggregated.size,
-    sidsWithRussian,
-    sidsWithCards,
-    totalCards,
-    totalWarnings,
-  };
 }
