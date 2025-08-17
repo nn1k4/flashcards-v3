@@ -15,7 +15,8 @@
     "validate": "npm run type-check && npm run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint-staged:run": "lint-staged"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json,css,md,html,yml,yaml}": [
