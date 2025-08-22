@@ -1,5 +1,17 @@
 # flashcards-v3 — Latvian Language Learning (Web)
 
+✨ **Flashcards-v3** is a smart online assistant for learning Latvian. Paste any text — and the app
+will automatically turn it into handy flashcards with translations, hints, and contexts.
+
+📖 Read texts with instant word and phrase translations, practice with flashcards, track your
+statistics, and edit translations to your liking. 📦 Save your progress and export flashcards to
+Anki or Quizlet. 🎧 Coming soon — study with video and audio: words highlighted in sync with speech.
+
+**Flashcards-v3** makes language learning lively and engaging: don’t just memorize isolated words,
+learn from real texts that interest you.
+
+---
+
 > React + TypeScript SPA with a Node.js proxy. **Config-first**, **manifest-oriented** architecture
 > for learning Latvian through flashcards, reading tooltips, and robust batch processing with
 > Claude. **LLM integration:** JSON-only via **Claude tools** (+ Zod), **prompt caching** for stable
