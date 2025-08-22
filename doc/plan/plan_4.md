@@ -1,151 +1,209 @@
-# План реализации — Этап 4 (v1.3: Media follow‑highlight + Export Anki/Quizlet)
+# План реализации — Этап 4 (v1.3: Media follow-highlight + Export Anki/Quizlet)
 
-Связка с ТЗ: TRS v5.0 — §22 «Медиасинхронизация», §19.2 «Экспорт Anki/Quizlet», §16 «Конфиги»,
-§17–§18 (приёмка/тесты), §20 «План релизов (v1.3)».
+Связка с ТЗ: **TRS v5.1** — §5.2/§5.3/§5.4 (режимы), §6 (импорт/экспорт), §12 (НФТ), §13
+(Media/Player), §16 (конфиги), §17–§18 (приёмка/тесты), §20 («v1.3»). Приоритет доков: оф. Anthropic
+→ `doc/best_practices/TechnicalGuidesForClaudeAPIv2.0.md` → `Message Batches.md` /
+`MessageBatches2.md` → `tool-use.md`. Примечание: Этап не меняет **manifest/tool/batch** инварианты;
+добавляет медиасинхронизацию и экспорт.
+
+---
 
 ## 0) Цели этапа
 
-- Добавить **медиасинхронизацию**: воспроизведение видео/аудио, подсветка текущей единицы в Reading
-  (follow‑highlight), управление хоткеями.
-- Интегрировать **переход от текста к медиасегменту** (и обратно), в т.ч. pre/post‑roll, плавный
-  скролл.
-- Реализовать **экспорт колод в форматы Anki/Quizlet** (первая итерация — текстовые форматы для
-  импорта).
-- Соблюдать конфиг‑first (медиа/экспорт), i18n, доступность, mobile‑friendliness.
-
-Не входят: YouTube‑капшены (v2.0), TTS автогенерация для карточек (вне этапа).
+- **Медиа-синхронизация**: воспроизведение аудио/видео, подсветка текущей фразы/слова в Reading
+  (follow-highlight), переходы Text↔Media.
+- **Управление**: хоткеи/жесты, pre/post-roll, плавный скролл; доступность и mobile-friendliness.
+- **Экспорт колод**: форматы **Anki/Quizlet** (первая итерация — совместимые CSV/TSV/TSV-подобные),
+  учёт N контекстов на обороте.
+- **Config-first**: все параметры (медиа/экспорт/хоткеи) — только из конфигов; i18n; тесты.
 
 ---
 
 ## 1) Рабочие пакеты
 
-### 1.1 Media Core (PlayerAdapter)
+### 1.1 Media Core (`PlayerAdapter`)
 
-- [ ] **Интерфейс** `PlayerAdapter`:
-  ```ts
-  interface MediaRef {
-    id: string;
-    type: 'audio' | 'video';
-    src: string;
-    duration?: number;
-    meta?: Record<string, unknown>;
-  }
-  interface MediaAnchor {
-    sid: string;
-    offsetStart: number;
-    offsetEnd: number;
-    confidence?: number;
-  }
-  interface PlayerAdapter {
-    mount(el: HTMLElement, ref: MediaRef): Promise<void>;
-    play(): void;
-    pause(): void;
-    seek(ms: number): void;
-    currentTime(): number;
-    on(event: 'timeupdate' | 'ended' | 'error', cb: (t: number) => void): void;
-    destroy(): void;
-  }
-  ```
-- [ ] **HTML5 реализация**: `<audio>/<video>`; поддержка HLS/DASH (если в конфиге
-      `provider: 'html5'`).
-- [ ] **События**: `timeupdate` → диспетчер подсветки; `error` → баннер с деталями.
-- [ ] **Конфиг** `media.json`: `preRollMs`, `postRollMs`, `hotkeys`
-      (playPause/backMs/forwardMs/prevSentence/nextSentence), `provider`, `debounceMs` подсветки.
+**Интерфейсы**
 
-### 1.2 Anchors & Follow‑Highlight
+```ts
+export interface MediaRef {
+  id: string;
+  type: 'audio' | 'video';
+  src: string; // URL/Blob
+  duration?: number;
+  meta?: Record<string, unknown>;
+}
+export interface MediaAnchor {
+  sid: string; // связь с Manifest
+  startMs: number;
+  endMs: number;
+  confidence?: number;
+}
+export interface PlayerAdapter {
+  mount(el: HTMLElement, ref: MediaRef): Promise<void>;
+  play(): void;
+  pause(): void;
+  seek(ms: number): void;
+  currentTime(): number;
+  on(event: 'timeupdate' | 'ended' | 'error', cb: (t: number) => void): void;
+  destroy(): void;
+}
+```
 
-- [ ] Хранилище `MediaAnchorsStore` (SID→{start,end}).
-- [ ] Маппинг на Reading: подсветка **активной** фразы/слова по текущему времени; плавный скролл к
-      видимой области.
-- [ ] **Функции перехода**:
-  - из Reading: клик по слову/фразе → `playSegment(SID, pre/post‑roll)`;
-  - из плеера: выбрать текущую фразу/слово по ближайшему SID.
-- [ ] Настройки перформанса: `throttle/debounce` обновления подсветки, отключение на слабых
-      устройствах (конфиг).
+**Реализация**
 
-### 1.3 Управление (горячие клавиши/мобильные жесты)
+- [ ] HTML5 `<audio>/<video>` как базовый провайдер; HLS/DASH — по флагу (если включено в конфиге).
+- [ ] События: `timeupdate` → диспетчер подсветки; `error` → локализованный баннер (код/совет).
+- [ ] Конфиг `config/media.json` (Zod-схема):
 
-- [ ] Хоткеи: из `media.hotkeys` (Space — play/pause; ←/→ — back/forward на `N` мс; ↑/↓ — prev/next
-      sentence). Конфигурируемо.
-- [ ] Мобильные жесты: тап по бокам — ±N секунд; двойной тап — play/pause.
-- [ ] ARIA/доступность: кнопки управления доступны с клавиатуры; проговариваемые метки.
+```jsonc
+{
+  "provider": "html5",
+  "preRollMs": 300,
+  "postRollMs": 250,
+  "throttleMs": 80,
+  "debounceMs": 80,
+  "followHighlight": true,
+  "hotkeys": {
+    "playPause": ["Space", "KeyK"],
+    "backMs": 2000,
+    "forwardMs": 2000,
+    "prevSentence": ["ArrowUp"],
+    "nextSentence": ["ArrowDown"],
+  },
+  "mobile": { "doubleTapMs": 2000, "edgeTapMs": 1000 },
+}
+```
 
-### 1.4 Экспорт Anki/Quizlet (v1)
+### 1.2 Anchors & Follow-Highlight
 
-- [ ] **Конфиг** `io.export.formats=["json","anki","quizlet"]` + параметры (`anki.deck`,
-      `anki.contextDelimiter`, `quizlet.delimiter`, `quizlet.quote`).
-- [ ] **Маппинг полей**:
-  - Front: латышская форма (слово/фраза);
-  - Back: перевод + первые N контекстов с переводами (N — из `flashcards.contextsDefault` или
-    отдельного ключа экспорта).
-  - Доп. колонки: base_form, unit, примечания (опц.).
-- [ ] **Форматы**:
-  - **Anki**: TSV/CSV, совместимый с импортом колоды (апгрейд до .apkg — отдельной задачей вне
-    v1.3);
-  - **Quizlet**: CSV/TSV согласно конфигу (разделитель/кавычки), экранирование.
-- [ ] **Локализация**: заголовки/подписи/подсказки экспорта.
-- [ ] **Тесты**: unit — экранирование, построение строк, срез контекстов; E2E — экспорт, импорт в
-      тестовый профиль Anki/Quizlet (ручная проверка + авто скриншоты).
+- [ ] `MediaAnchorsStore` (SID → {startMs,endMs,confidence}). Источник — `manifest.meta.anchors` (из
+      v1.2 Subtitles) или импортированный JSON.
+- [ ] Маппинг времени → активный SID (binary search/upper bound).
+- [ ] Подсветка в Reading: класс `reading.active` + плавный скролл к видимой области (respect user
+      motion settings).
+- [ ] Переходы:
+  - из Reading: клик «▶ сегмент» → `playSegment(sid, pre/post-roll)`.
+  - из плеера: вычислить ближайший SID и подсветить в Reading.
 
-### 1.5 UX/Интеграция
+### 1.3 Управление (хоткеи/жесты/доступность)
 
-- [ ] Раздел Media в UI: плеер (mini/inline), кнопки переходов, индикатор активного SID.
-- [ ] В Reading: иконки «▶ сегмент», «⤴ к медиамоменту» рядом с подсказкой/фразой.
-- [ ] В Flashcards: на обороте — ссылка «воспроизвести контекст» (если есть якоря).
-- [ ] Экспорт: пункт в верхнем меню; диалог выбора формата и параметров (N контекстов на Back,
-      включать ли base_form и т.д.).
+- [ ] Хоткеи из `media.hotkeys`: Space/KeyK — play/pause; ←/→ — back/forward на N мс; ↑/↓ —
+      prev/next sentence.
+- [ ] Мобильные жесты: тап по левому/правому краю — ±N мс; двойной тап — play/pause (конфиг).
+- [ ] A11y: управляемые кнопки с ARIA-лейблами, видимые focus-кольца, role="toolbar".
+- [ ] i18n: все подписи/подсказки из `/src/locales/*`.
 
-### 1.6 Документация/Конфиги/Качество
+### 1.4 Интеграция в UI
 
-- [ ] RU‑док: `/docs/configs/media.md`, `/docs/configs/io.export.md`.
-- [ ] Обновить AGENT.md/Codex.md — правила для PlayerAdapter и экспортёров.
-- [ ] Анти‑хардкод: задержки, хоткеи, разделители — только из конфигов.
+- [ ] Раздел «Media» (inline/mini-player) + индикатор активного SID.
+- [ ] В Reading: иконки «▶ сегмент» и «⤴ к медиамоменту» рядом с подсказкой/фразой; не
+      конфликтовать с tooltip.
+- [ ] В Flashcards (оборот): ссылка «воспроизвести контекст» (если есть anchor у `context.sid`).
+- [ ] Перфоманс: throttle/debounce обновлений; опция отключить follow-highlight на слабых
+      устройствах.
+
+### 1.5 Экспорт Anki/Quizlet (v1)
+
+**Конфиг**
+
+```jsonc
+{
+  "io": {
+    "export": {
+      "formats": ["json", "anki", "quizlet"],
+      "anki": { "deck": "LatvianDeck", "contextDelimiter": " — " },
+      "quizlet": { "delimiter": "\t", "quote": "\"", "escape": "\\" },
+      "backContexts": 2, // сколько контекстов на обороте
+      "includeBaseForm": true,
+    },
+  },
+}
+```
+
+**Маппинг полей**
+
+- Front: латышская форма (слово/фраза).
+- Back: базовый перевод + первые `backContexts` контекстов (латышский → перевод).
+- Доп. колонки (опц.): `unit`, `base_form`.
+- Экранирование: по конфигу (разделитель/кавычки/escape), Unicode безопасно.
+
+**Форматы**
+
+- [ ] **Anki**: TSV/CSV, совместимый с импортом (проверка в тестовом профиле).
+- [ ] **Quizlet**: CSV/TSV (конфигурируемые разделители/кавычки).
+
+**UX**
+
+- [ ] Диалог «Экспорт»: выбор формата, параметров (N контекстов, включать `base_form` и пр.),
+      предпросмотр 10 строк.
+- [ ] Локализованные подсказки, заметки о лимитах целевого сервиса.
+
+### 1.6 Документация/Линт/Качество
+
+- [ ] RU-доки: `/doc/configs/media.md`, `/doc/configs/io.export.md` с примерами.
+- [ ] Обновить **AGENT.md/Codex.md**: правила для PlayerAdapter, anchors, экспортёров (ссылаться, не
+      дублировать).
+- [ ] Анти-хардкод-линт: интервалы, хоткеи, разделители, имена колод — только из конфигов.
+- [ ] Телеметрия (консоль/лог): `% media_timeupdate/s`, `seek_count`, `play_pause_count`,
+      `export_count`.
 
 ---
 
 ## 2) Спринты
 
-### S20 — Media Core
+### S22 — Media Core
 
-- PlayerAdapter (HTML5), события, конфиг, базовая панель управления.
+- PlayerAdapter (HTML5), события, конфиг; базовая панель управления; баннеры ошибок.
 
-### S21 — Anchors & Follow‑Highlight
+### S23 — Anchors & Follow-Highlight
 
-- Store якорей, подсветка по времени, переходы Text↔Media, перформанс‑тюнинг.
+- Store якорей, маппинг времени → SID, подсветка/скролл, переходы Text↔Media.
 
-### S22 — Управление и UX
+### S24 — Управление и интеграция
 
-- Хоткеи/жесты, доступность, интеграция в Reading/Flashcards.
+- Хоткеи/жесты/a11y; встраивание в Reading/Flashcards; перф-тюнинг.
 
-### S23 — Экспорт Anki/Quizlet
+### S25 — Экспорт Anki/Quizlet
 
-- Маппинг, формирование файлов, диалог, тесты, ручная проверка импорта.
+- Маппинг/формирование файлов; диалог настроек; предпросмотр; ручная проверка импорта.
 
-### S24 — Документация и полировка
+### S26 — Docs & Polish
 
-- RU‑доки, конфиги, E2E сценарии, стабилизация.
+- RU-доки, локализация, анти-хардкод; unit/integration/E2E; стабилизация.
 
 ---
 
 ## 3) Definition of Done (DoD)
 
-- Плеер запускается и корректно управляется (play/pause/seek/back/forward); ошибки воспроизведения
-  показывают локализованные баннеры.
-- Follow‑highlight: текущая фраза/слово подсвечивается в Reading; клик по тексту играет
-  соответствующий сегмент с pre/post‑roll.
-- Хоткеи/жесты работают и конфигурируются; доступны с клавиатуры.
-- Экспорт Anki/Quizlet создаёт корректные файлы (экранирование, кодировка, количество контекстов);
-  импорт в целевые сервисы успешен.
-- Нет хардкодов; конфиги валидируются; тесты зелёные.
+- Плеер (audio/video) управляется (play/pause/seek/back/forward), ошибки воспроизведения
+  показываются баннерами.
+- Follow-highlight: активная фраза/слово подсвечивается; клик по тексту играет нужный сегмент с
+  pre/post-roll; плавный скролл.
+- Хоткеи и мобильные жесты работают, настраиваются конфигом; доступность соблюдена.
+- Экспорт Anki/Quizlet выдаёт корректные файлы (экранирование/кодировка/колонки/кол-во контекстов);
+  пробный импорт успешен.
+- **Config-first**: ни одного хардкода интервалов/горячих клавиш/разделителей; валидация Zod
+  зелёная.
+- Тесты (unit/integration/E2E) зелёные; документация обновлена.
 
 ---
 
 ## 4) Риски и меры
 
-- **Неточные тайминги**: допуски/nearest SID; ручная корректировка якорей (в будущем); pre/post‑roll
-  смягчает несоответствие.
-- **Проигрывание на мобильных**: ограничения автоплея → только по пользовательскому действию;
-  fallback UI.
-- **Совместимость Anki/Quizlet**: различия форматов → строгая документация, экспорт в универсальные
-  CSV/TSV на v1.3, .apkg позже.
-- **Производительность подсветки**: throttle/debounce, отключаемый follow‑highlight в конфиге.
+- **Неточные тайминги/разметка** → nearest-SID, pre/post-roll, визуальные допуски; будущая ручная
+  коррекция якорей.
+- **Мобильные ограничения автоплея** → запуск только по пользовательскому действию; явные подсказки
+  в UI.
+- **Перфоманс подсветки** → throttle/debounce/disable-flag; минимизация reflow.
+- **Совместимость форматов экспорта** → строгие тесты на экранирование/разделители; инструкции по
+  импорту; опция альтернативных кодировок (UTF-8 BOM).
+- **A11y/i18n** → полный набор локализаций и ARIA-атрибутов, фокус-контуры.
+
+---
+
+## 5) Артефакты
+
+- `/doc/configs/media.md`, `/doc/configs/io.export.md` (RU) с примерами конфигов и скриншотами.
+- Образцы экспортируемых файлов для Anki/Quizlet + чек-лист ручной проверки.
+- Диаграмма взаимодействия Player ↔ Reading (Mermaid) в `doc/architecture_media.mmd`.
