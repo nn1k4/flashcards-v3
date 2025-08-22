@@ -1,39 +1,43 @@
-# План реализации — Этап 5 (v2.0: Профили/Подписки/Локальные NLP/YouTube Captions)
+# План реализации — Этап 5 (v2.0: Профили / Подписки / Локальные NLP / YouTube Captions)
 
-Связка с ТЗ: TRS v5.0 — §22 (медиасинхронизация — задействовано косвенно), §23
-(профили/ключи/подписки), §24 (локальный NLP/MT), §21.6 (YouTubeCaptionsAdapter), §16 (конфиги),
-§17–§18 (приёмка/тесты), §20 «План релизов (v2.0)».
+Связка с ТЗ: **TRS v5.1** — §6 (импорт/экспорт), §12 (НФТ), §13 (интеграции LLM/MT/Media), §16
+(конфиги), §17–§18 (приёмка/тесты), §20 («v2.0»). Приоритет доков: оф. Anthropic →
+`doc/best_practices/TechnicalGuidesForClaudeAPIv2.0.md` → `tool-use.md` → `Message Batches.md` /
+`MessageBatches2.md`. Примечание: Этап **не нарушает** инварианты manifest/SID, tool-use, batch;
+добавляет аккаунты, биллинг, локальный NLP/MT и YouTube Captions.
+
+---
 
 ## 0) Цели этапа
 
-- Добавить **профили пользователей** с синхронизацией настроек/колод, безопасное хранение
-  персональных **API‑ключей** (Anthropic/OpenAI/TTS/Images и т.д.).
-- Внедрить **подписки/лимиты/фичи** (tiers) и **feature‑flags** на уровне сервера и клиента.
-- Реализовать **локальный NLP‑путь**: Lemma/Dictionary/MT (Helsinki‑NLP/TildeLM), режимы
-  `pipeline.mode = llm|local|hybrid` + кэширование.
-- Поддержать **YouTube Captions** (официальные API, TOS‑compliant) как дополнительный источник
-  субтитров.
-- Обеспечить безопасность, соответствие конфиг‑политике, бэкапы, экспорт/удаление данных
-  пользователя.
-
-Не входят: полноценная нативная мобильная публикация (за рамками v2.0), генерация TTS/Images по
-умолчанию (оставляем за флагами).
+- **Аккаунты/Профили:** аутентификация, синхронизация настроек и колод между устройствами;
+  экспорт/удаление данных.
+- **Подписки/Лимиты/Фичи:** платёжный провайдер, тарифы, квоты/feature-flags, учёт использования.
+- **Локальный NLP/MT:** режимы `pipeline.mode = llm | local | hybrid`; Lemma/Dictionary/MT адаптеры,
+  кэш.
+- **YouTube Captions:** легальный (TOS-compliant) адаптер получения дорожек и VTT → Manifest
+  anchors.
+- **Безопасность:** серверный vault для ключей, шифрование, журнал аудита, резервные копии.
+- **Config-first:** всё конфигурируемо (без хардкодов), i18n, доступность, тесты.
 
 ---
 
 ## 1) Архитектура и компоненты
 
-- **Сервер (Node 24, ESM)**: Fastify/Express, PostgreSQL (или SQLite для dev) через Prisma; Redis
-  (опц.) для сессий/квот/кэша.
-- **Auth**: JWT (access/refresh) + OAuth2 (Google/GitHub — опц.) + email link (magic).
-- **Secrets**: пользовательские API‑ключи — шифрование (libsodium/AES‑GCM), KMS/ключ из .env;
-  хранение только на сервере.
-- **Billing**: Stripe/ЮKassa (одно из); вебхуки; таблица подписок/чеков.
-- **Feature flags & quotas**: таблицы `features`, `entitlements`, `usage` (rate/quota per
-  user/tier).
-- **NLP Local**: сервис‑провайдер в отдельном процессе/worker; модели скачиваются/кешируются; API
-  адаптеры.
-- **YouTube Captions**: адаптер получения списка дорожек → загрузка VTT/JSON; проверка прав/доступа.
+- **Server (Node 24, ESM):** Fastify/Express; ORM: Prisma; БД: PostgreSQL (prod) / SQLite (dev);
+  Redis (опц.) для сессий/квот/кэша.
+- **Auth:** JWT (access/refresh, HttpOnly), CSRF-защита; OAuth2 (Google/GitHub — опц.), magic-link
+  email (конфигом).
+- **Secrets/Vault:** ключи провайдеров в БД **всегда** в шифре (AES-GCM/libsodium/KMS); на клиент не
+  утекать.
+- **Billing:** Stripe (или эквивалент), вебхуки, таблицы `subscriptions`, `invoices`.
+- **Feature Flags & Entitlements:** таблицы `features`, `entitlements`, `usage`; SDK клиента для
+  включения фич.
+- **NLP Local Services:** отдельный процесс/worker; ONNX/transformers для MT; словарь/лемматизатор
+  локально.
+- **YouTube Captions:** Data API для списка дорожек → загрузка VTT; альтернативно — ручной импорт
+  ссылки/файла.
+- **Наблюдаемость:** метрики запросов/ошибок/квот; алёрты; audit-лог.
 
 ---
 
@@ -41,173 +45,184 @@
 
 ### 2.1 Аккаунты и аутентификация
 
-- [ ] Маршруты: `/api/auth/register`, `/login`, `/refresh`, `/logout`.
-- [ ] Хранение пользователя: profile (i18n/theme/hotkeys), preferences, timestamps; таблица `users`.
-- [ ] Сессии: refresh‑token в HttpOnly cookie; CSRF‑защита.
-- [ ] E2E: регистрация, логин, восстановление сессии.
+- [ ] Маршруты: `/api/auth/register|login|refresh|logout`.
+- [ ] Таблица `users`: email, name, locale, theme, createdAt, updatedAt.
+- [ ] Сессии: refresh в HttpOnly cookie; ротация токенов; блок-листы при логауте.
+- [ ] E2E: регистрация → логин → автопродление → логаут.
 
-### 2.2 Синхронизация настроек и колод
+### 2.2 Профили и синхронизация
 
-- [ ] Маршруты: `/api/profile/settings` (GET/PUT), `/api/decks` (GET/POST/PUT/DELETE; пагинация),
-      `/api/decks/:id/cards`.
-- [ ] Конфликт‑резолюция (last‑write‑wins + версии); экспорт/импорт пользовательских данных (GDPR
-      download + delete).
-- [ ] UI: страница Профиль → вкладки Settings/Decks/Usage/Billing.
+- [ ] `/api/profile/settings` (GET/PUT) — i18n, темы, хоткеи, targetLanguage, policies.
+- [ ] `/api/decks` (CRUD, пагинация) и `/api/decks/:id/cards` — колоды и карточки; версии и
+      `updatedAt`.
+- [ ] Конфликт-резолюция: last-write-wins + версионирование; батч-операции.
+- [ ] GDPR-опции: экспорт профиля/колод (JSON), удаление по запросу.
+- [ ] UI: страница «Профиль» (Settings / Decks / Usage / Billing).
 
-### 2.3 Хранилище ключей и интеграции провайдеров
+### 2.3 Хранилище ключей (Keys Vault)
 
-- [ ] Маршруты: `/api/keys` (POST/GET/DELETE) — сохранить/заменить ключи провайдеров; ключи **не**
-      возвращаются в явном виде (только masked/exists).
-- [ ] Проксирование вызовов с подстановкой ключа пользователя (если разрешено тарифом); логирование
-      минимальное, без сырого текста запросов.
-- [ ] Политики: per‑provider enable/disable; ограничение на домены/инструменты.
+- [ ] `/api/keys` (POST/GET/DELETE): сохранить/обновить ключи Anthropic/OpenAI/TTS/Images; ответы —
+      только masked/exists.
+- [ ] Проксирование вызовов на сервере с подстановкой пользовательского ключа (с проверкой
+      тарифа/квот).
+- [ ] Политики: разрешённые провайдеры/инструменты, ограничение доменов.
 
-### 2.4 Подписки, лимиты и фичи
+### 2.4 Подписки, квоты, фичи
 
-- [ ] Интеграция **Stripe**: продукты/планы (Free/Pro/Max), вебхуки (checkout/session/renew/cancel),
-      таблица `subscriptions`.
-- [ ] Квоты: `maxTextLength`, `maxBatchesPerDay`, `ocrMinutes`, `mediaFollow`, `jsonlImport`,
-      `ankiExport` и т.д. — в `entitlements`.
-- [ ] Реал‑тайм подсчёт usage: middleware на прокси/ingestion/экспорт.
-- [ ] UI: страница Billing (план/статус/лимиты/история).
+- [ ] Stripe: продукты/тарифы (Free/Pro/Max), вебхуки (checkout/renew/cancel); таблица
+      `subscriptions` с состояниями.
+- [ ] `entitlements`: `maxTextLength`, `maxBatchesPerDay`, `ocrMinutes`, `mediaFollow`,
+      `jsonlImport`, `ankiExport` и др.
+- [ ] Учёт `usage`: middleware на прокси/ingestion/экспорт, период сброса; UX-баннеры при
+      превышении.
+- [ ] Feature-flags: rollout по пользователю/тарифу/проценту.
 
-### 2.5 Feature Flags
+### 2.5 Локальный NLP/MT
 
-- [ ] Таблица `features` с rollout (global %, per‑user, per‑tier); SDK на клиента.
-- [ ] Примеры: `revealOnPeek`, `hoverTTS`, `contextMenu`, `youtubeCaptions`, `localMT`.
+- [ ] **LemmaAdapter**: леммы/морфо-теги (локальный сервис/библиотека).
+- [ ] **DictionaryAdapter**: локальный словарь (SQLite/FTS JSON-индекс) → перевод + пометы.
+- [ ] **MTAdapter**: модель `Helsinki-NLP/opus-mt-lv-ru` (или в зависимости от `targetLanguage`),
+      режим ONNX/CPU; конфиг — `device`, `precision`, `maxLength`, `cache`.
+- [ ] **Modes**:
+  - `local`: карточки из Lemma+Dictionary; переводы предложений — MT;
+  - `hybrid`: сложные случаи/амбигуити → LLM по правилам/скорингу;
+  - `llm`: текущий путь без изменений.
 
-### 2.6 Локальный NLP/MT
+- [ ] Качество: тестовые корпуса; минимальные метрики (BLEU/COMET) в отчёте; пороги в конфиге.
 
-- [ ] **LemmaAdapter**: лемматизация/морфо‑теги (локальный сервис/библиотека), API
-      `analyze(tokens): Lemma[]`.
-- [ ] **DictionaryAdapter**: локальный словарь (SQLite/JSON‑индекс) → перевод слова + пометы.
-- [ ] **MTAdapter**: загрузка модели **Helsinki‑NLP/opus‑mt‑lv‑ru** (или `lv-uk`, в зависимости от
-      targetLanguage); ONNX/transformers; конфиг: `device`, `precision`, `maxLength`, `cache`.
-- [ ] **Pipeline**: `pipeline.mode = local | hybrid | llm`:
-  - `local`: карточки из Lemma+Dictionary; предложения через MT;
-  - `hybrid`: сложные случаи → LLM (правило/скоринг по длине/амбигуити).
-- [ ] Качество: тестовые корпуса; BLEU/COMET (минимальный отчёт); конфиг порогов.
+### 2.6 Кэш и производительность
 
-### 2.7 Кэш и производительность
+- [ ] `TranslationCache`: ключ = (sentence + lang + mode); TTL/стратегии; прогрев на импорт/повторы.
+- [ ] Кэш лемм/словаря (LRU/TTL); мониторинг hit-rate.
 
-- [ ] `TranslationCache` (ключ: sentence+lang+mode), TTL, warmup при импорте.
-- [ ] Кэш лемм и словарных ответов.
+### 2.7 YouTube Captions Adapter
 
-### 2.8 YouTube Captions Adapter
+- [ ] Получение списка дорожек через YouTube Data API (при ключе и правах); выбор дорожки; загрузка
+      VTT.
+- [ ] Fallback: ручной ввод URL дорожки или загрузка VTT/JSON пользователем.
+- [ ] Парсинг → anchors в `manifest.meta` (SID-mapping по порядку).
+- [ ] Ограничения/квоты API; локализованные ошибки/советы.
 
-- [ ] Получение списка дорожек через YouTube Data API (при наличии ключа и прав пользователя); выбор
-      дорожки; загрузка VTT.
-- [ ] Резерв: ручная вставка URL дорожки/скачивание пользователем файла.
-- [ ] Ограничения/квоты API; i18n‑ошибки.
+### 2.8 Безопасность, приватность, соответствие
 
-### 2.9 Безопасность, приватность, соответствие
+- [ ] Шифрование PII/ключей (AES-GCM/libsodium/KMS); пароли — Argon2.
+- [ ] Политика хранения: retention; экспорт/удаление всех данных профиля.
+- [ ] Логи без сырого текста/ключей; audit-таблица `audit_logs` (кто/что/когда).
+- [ ] Бэкапы БД; DR-план.
 
-- [ ] Шифрование PII и ключей (AES‑GCM), пароли — Argon2.
-- [ ] Политика хранения данных: retention/удаление по запросу, экспорт всех данных пользователя.
-- [ ] Логи без персональных данных/ключей; аудит таблица `audit_logs`.
-- [ ] Резервные копии БД; disaster‑recovery сценарии.
+### 2.9 Наблюдаемость и алёрты
 
-### 2.10 Наблюдаемость и алёрты
+- [ ] Метрики: latency, error rate, 429/529, usage per user/tier.
+- [ ] Алёрты: всплески 429/529, падение вебхуков, рост отказов платежей, переполнение диска.
 
-- [ ] Telemetry: request metrics, error rates, latency; дашборд.
-- [ ] Алёрты: превышение 429/529, неудачные вебхуки, заполнение диска.
+### 2.10 Миграции и совместимость
 
-### 2.11 Миграции/обратная совместимость
-
-- [ ] Prisma миграции; мигрирование существующих локальных данных пользователя в серверные профили.
-- [ ] Совместимость экспортных форматов (JSON/ANKI/Quizlet) с учётом новых полей.
+- [ ] Prisma миграции; перенос локальных данных в облачный профиль; back-compat export
+      (JSON/Anki/Quizlet).
+- [ ] Версионирование схем/конфигов; скрипты миграций.
 
 ---
 
 ## 3) Конфиги (добавления)
 
-```json
+```jsonc
+// config/account.json
 {
-  "account": {
-    "profiles": true,
-    "subscriptions": true,
-    "sync": true,
-    "providers": { "oauth": ["google"], "emailLink": true }
-  },
-  "entitlements": {
-    "free": { "maxTextLength": 8000, "jsonlImport": false },
-    "pro": { "maxTextLength": 40000, "jsonlImport": true },
-    "max": { "maxTextLength": 120000, "ocrMinutes": 120, "mediaFollow": true }
-  },
-  "pipeline": { "mode": "hybrid" },
-  "nlp": {
-    "lemma": { "provider": "local" },
-    "dictionary": { "provider": "local" },
-    "mt": {
-      "provider": "local",
-      "model": "Helsinki-NLP/opus-mt-lv-ru",
-      "device": "cpu",
-      "cache": true
-    }
-  },
-  "youtube": { "enabled": true, "requireUserApiKey": true }
+  "profiles": true,
+  "sync": true,
+  "auth": { "providers": { "emailLink": true, "oauth": ["google"] } }
 }
+// config/entitlements.json
+{
+  "free":  { "maxTextLength": 8000,  "jsonlImport": false },
+  "pro":   { "maxTextLength": 40000, "jsonlImport": true, "mediaFollow": true },
+  "max":   { "maxTextLength": 120000, "ocrMinutes": 120, "ankiExport": true }
+}
+// config/pipeline.json
+{ "mode": "hybrid" } // llm | local | hybrid
+// config/nlp.json
+{
+  "lemma": { "provider": "local" },
+  "dictionary": { "provider": "local" },
+  "mt": { "provider": "local", "model": "Helsinki-NLP/opus-mt-lv-ru", "device": "cpu", "cache": true }
+}
+// config/youtube.json
+{ "enabled": true, "requireUserApiKey": true, "quotaTips": true }
+// config/security.json
+{ "encryption": "aes-gcm", "kms": false, "audit": true }
 ```
+
+Все ключи имеют Zod-схемы; `npm run validate:config` обязателен.
 
 ---
 
-## 4) Спринты
+## 4) Спринты (продолжение нумерации)
 
-### S25 — Auth & Profiles
+### S27 — Auth & Profiles
 
-- Аккаунты, сессии, настройки профиля, синхронизация.
+Аккаунты, сессии, страница профиля, CRUD настроек; E2E happy-path.
 
-### S26 — Keys Vault & Providers
+### S28 — Keys Vault & Proxy
 
-- Сохранение/маскирование/проксирование ключей; политики провайдеров.
+Vault API, маскирование ключей, проксирование вызовов с ключами, политики провайдеров.
 
-### S27 — Billing & Entitlements
+### S29 — Billing & Entitlements
 
-- Интеграция платежей, лимиты/usage, UI Billing.
+Stripe, вебхуки, тарифы/лимиты, usage-учёт, UI Billing.
 
-### S28 — Local NLP/MT
+### S30 — Local NLP/MT
 
-- Lemma/Dictionary/MT, pipeline modes, кэш, базовые метрики качества.
+Lemma/Dictionary/MT, режимы pipeline, кэши, базовые метрики качества.
 
-### S29 — YouTube Captions
+### S31 — YouTube Captions
 
-- Получение дорожек, загрузка VTT, лимиты, UX.
+Список дорожек → VTT → anchors; квоты/ошибки; UX выбора дорожки.
 
-### S30 — Security/Compliance
+### S32 — Security & Compliance
 
-- Аудит, бэкапы, экспорт/удаление данных, логирование.
+Шифрование, audit-лог, экспорт/удаление данных, бэкапы/DR.
 
-### S31 — Docs & Tests
+### S33 — Docs & Tests
 
-- RU‑доки, схемы, E2E на профили, квоты, NLP/MT и YouTube.
+RU-доки, схемы, E2E на профили/квоты/NLP/YouTube; линт/валидаторы.
 
-### S32 — Polish & Release
+### S34 — Polish & Release
 
-- Оптимизация, устранение дефектов, релиз v2.0.
+Оптимизация, дефекты, релиз v2.0.
 
 ---
 
 ## 5) Definition of Done (DoD)
 
-- Логин/регистрация/выход работают; настройки профиля и колоды синхронизируются между устройствами.
-- Ключи провайдеров хранятся шифрованно; не утекут на клиент; проксируются корректно.
-- Подписки активируют фичи/лимиты; usage учитывается; биллинг отражается в UI.
-- `pipeline.mode` переключает источник перевода/карточек; кэш уменьшает повторы; качество локального
-  MT подтверждено на тест‑наборах.
-- YouTube Captions доступны через официальный API/или ручной импорт; дорожки выбираются и мапятся в
-  SID.
-- Документация и конфиги полные; все тесты зелёные.
+- Вход/выход пользователя работает; настройки/колоды синхронизируются между устройствами.
+- Ключи провайдеров хранятся **только на сервере**, зашифрованы; на клиент не отдаются (только
+  masked).
+- Подписки активируют фичи/квоты; при превышении — корректные баннеры и блокировки; Billing UI
+  отражает статус.
+- `pipeline.mode` переключает источник карточек/перевода; локальный MT/словарь/лемматизация
+  работают; кэш уменьшает повторы.
+- YouTube Captions: выбор дорожки, загрузка VTT, anchors в `manifest.meta`; интеграция с
+  follow-highlight (этап 4) стабильна.
+- Документация/конфиги полные; Zod-валидация зелёная; unit/integration/E2E — зелёные.
 
 ---
 
 ## 6) Риски и меры
 
-- **Безопасность ключей**: строгая серверная изоляция, шифрование на диске, ограничение логов,
+- **Безопасность ключей/PII** → строгая серверная изоляция, AES-GCM, ограниченные логи,
   периодическая ротация.
-- **Биллинг и юридические аспекты**: песочница Stripe, корректная обработка вебхуков, политика
-  возвратов.
-- **Производительность локального MT**: кэш, тюнинг модели, ограничение устройств; возможность
-  отключить для слабых машин.
-- **Квоты YouTube API**: graceful degradation, подсказки пользователю, ручной импорт субтитров как
-  fallback.
-- **Миграции данных**: пошаговые миграции, резервные копии, тестовые прогоны на копии БД.
+- **Биллинг/юридические аспекты** → sandbox, надёжные вебхуки, обработка отказов/возвратов, чёткий
+  UX.
+- **Производительность локального MT** → кэш, тюнинг, лимиты устройств; опция отключения для слабых
+  машин.
+- **Квоты YouTube API** → graceful degradation, подсказки; ручной импорт как fallback.
+- **Миграции** → пошаговые Prisma-миграции, бэкапы, тестовые прогоны на копии БД.
+
+---
+
+## 7) Артефакты
+
+- ER-диаграмма (`doc/architecture_db.mmd`), спецификации API (OpenAPI), чек-листы аудита
+  безопасности.
+- Доки конфигов: `account.md`, `entitlements.md`, `nlp.md`, `youtube.md`, `security.md`.
+- Примеры экспортов данных пользователя (GDPR), примеры VTT и anchors-mapping.
