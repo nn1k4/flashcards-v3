@@ -1,242 +1,218 @@
-# Flashcards‑v3 — AI Agent Guide
+# Flashcards-v3 — AI Agent Guide (v5.1)
 
-> **Назначение файла**: это инструкция для ИИ‑помощников (ChatGPT/Claude и др.), которые помогают
-> писать и править код/документацию в этом репозитории. Следуй правилам ниже, чтобы не ломать
-> архитектурные инварианты и соответствовать ТЗ/планам.
-
----
-
-## 0) Каноничные источники (читать в таком порядке)
-
-1. **TRS**: `doc/trs/trs_v_5.md` — _источник истины_ по функционалу, нефункциональным требованиям и
-   критериям приёмки.
-2. **Roadmap**: `doc/roadmap/roadmap.md` — вехи и зависимости.
-3. **Планы этапов**: `doc/plan/plan_1.md … plan_5.md` — что входит в текущий этап.
-4. **Best Practices** (`doc/best_practices/`):
-   - `TechnicalGuidesForClaudeAPIv2.0.md` — **приоритетный** гайд по Claude API (после официальной
-     документации Anthropic).
-   - `Message Batches.md`, `MessageBatches2.md` — как использовать и парсить batches.
-   - `best_practices0.md`, `best_practices1.md` — современные практики React/TS/Node 2025.
-
-5. **README** — обзор репозитория и структуру папок.
-
-> Любая правка кода **должна ссылаться** на соответствующие пункты TRS/плана (номер раздела/этапа) в
-> описании PR.
+> Инструкция для ИИ-помощников (ChatGPT/Claude и др.), которые пишут/правят код и документацию в
+> этом репозитории. Соблюдай архитектурные инварианты, ТЗ и планы. Любые правки должны ссылаться на
+> конкретные пункты TRS/планов.
 
 ---
 
-## 1) Архитектурные инварианты (не нарушать)
+## 0) Каноничные источники (читать по порядку)
 
-- **Манифест как источник истины**: порядок и состав предложений фиксирует Manifest (SID). LV‑текст
-  собирается **только** из манифеста (§4 TRS).
-- **Агрегация по SID**: все ответы LLM/JSONL агрегируются исключительно по `SID`, порядок строк
-  JSONL **не значим**.
-- **FSM → UI**: состояние UI — проекция конечной автомата; никаких «спонтанных» setState.
-- **JSON‑только**: все LLM‑ответы — строго структурированный JSON; гибриды с текстом запрещены (если
-  не указано иначе в плане).
-- **Config‑first**: **никаких хардкодов** (модель, тайминги, лимиты, хоткеи, стили, размеры, языки).
-  Всё из `config/*.json(.*)` со схемами Zod (§3, §16 TRS).
-- **i18n/Theming**: все строки UI из `/src/locales/*`; темы через токены/vars.
-- **Безопасность ключей**: ключи провайдеров — только на **proxy**; фронт не хранит секреты.
+1. **TRS:** `doc/trs/trs_v_5.md` — источник истины по функционалу/нефункционалке/приёмке.
+2. **Roadmap:** `doc/roadmap/roadmap.md` — вехи, зависимости, KPI.
+3. **Планы:** `doc/plan/plan_1.md … plan_5.md` — что входит в текущий этап.
+4. **Best-Practices:** `doc/best_practices/*` — `TechnicalGuidesForClaudeAPIv2.0.md` (**приоритет**
+   после официальных доков Anthropic), — `tool-use.md` (policy
+   tools/JSON-only/caching/stop-reasons), — `Message Batches.md`, `MessageBatches2.md` (паритет с
+   Messages API), — `best_practices0.md`, `best_practices1.md` (React/TS/Node 2025).
+5. **README** — обзор, структура репозитория.
+
+> В описании PR укажи ссылки на § TRS и соответствующий `plan_X.md`.
 
 ---
 
-## 2) Техстек и режимы
+## 1) Архитектурные инварианты (НЕ нарушать)
 
-- **Node.js** v24.6.0 (ESM), **npm** v11.5.1.
-- **Frontend**: React 18, TS, Vite, Tailwind, Framer Motion.
-- **Proxy**: Express/Fastify (ESM), маршруты: `/api/health`, `/api/llm/single`,
-  `/api/batch/{create,status,result}`.
-- **Режимы**: Text → Flashcards → Reading → Translation → Edit.
+- **Manifest-first:** порядок/состав LV-предложений задаёт Manifest (SID). LV собирается **только**
+  из манифеста.
+- **SID-aggregation:** результаты LLM/Batch сопоставляются по `custom_id==SID`; порядок строк JSONL
+  **не значим**.
+- **FSM-first:** UI — проекция конечного автомата (idle→submitted→in_progress→ready/failed).
+- **JSON-only через tools:** все LLM-ответы — строго структурированный JSON через **Claude tools**
+  (валидируем Zod). Гибриды с текстом запрещены.
+- **Config-first:** никаких хардкодов (модель, лимиты, хоткеи, стили, задержки, языки). Всё из
+  `config/*.json(.*)` со схемами Zod.
+- **TS strict:** `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`.
+- **i18n/Theming:** все строки из `/src/locales/*`; темы — tokens/CSS vars.
+- **Keys security:** секреты живут на прокси; фронт не хранит ключи.
 
-Подробности см. §5 TRS. Хоткеи Flashcards, подсказки Reading (delay/debounce/cancel/single‑flight),
-статистика Translation, Edit с master‑visible/правкой контекстов — обязательны.
+---
 
-### Поток данных (КРИТИЧНО для понимания)
+## 2) Tool-use & Prompt-caching (policy)
+
+- **JSON-only via tools:** все вызовы Claude проходят с `tools` + фиксированным `tool_choice`
+  (эмиттер карточек/структуры). Парсим **первый** `tool_use` нужного имени → `input` → Zod.
+- **Parallel tools:** по умолчанию **выключено**. Если включим — **все** `tool_result` возвращаются
+  **одним** user-сообщением и **в начале** контента.
+- **Stop reasons:** различаем `stop_reason` и HTTP-ошибки. Для `max_tokens` → **bump** лимита
+  (single) или **split-retry** чанка (batch). Частичные результаты не блокируем.
+- **Batch parity:** Message Batches поддерживает те же поля/фичи, что и Messages API (incl. tools).
+- **Prompt caching:** стабилизируем `system` и определения `tools`; кеш — best-effort; смена
+  `tool_choice` может инвалидировать кеш.
+
+См. `doc/best_practices/tool-use.md` и `TechnicalGuidesForClaudeAPIv2.0.md`.
+
+---
+
+## 3) Техстек и режимы
+
+- **Node.js** v24.6.0 (ESM), **npm** v11.5.1; Proxy: Express/Fastify (ESM).
+- **Frontend:** React 18, TypeScript, Vite, Tailwind, Framer Motion, Cypress (E2E).
+- **Режимы:** Text → Flashcards → Reading → Translation → Edit.
+- **Сегментация:** `latvian_sentence_tester:local` (дефолт), 1 предложение/чанк (\~300 токенов) — из
+  конфигов.
+
+### Поток данных (критично)
 
 ```
-Исходный текст → Сплиттер → Манифест {sid, lv, sig} → LLM по чанкам
-                                   ↑
-LV из манифеста ← Агрегация по SID ← Валидация DTO ← JSONL ответы
-RU/target по SID ← Каноникализация ←
+Исходный текст → Сегментация → Manifest {sid, lv, sig} → LLM по чанкам (tools JSON-only)
+                                       ↑
+LV из Manifest ← Агрегация по SID ← Валидация DTO/Zod ← JSONL/tool_use input
+RU/target по SID ← Каноникализация
 ```
 
-## 2A) Build & Commands
+---
 
-- Проверка типов: `npm run type-check`
-- Запуск тестов: `npm run test`
-- Золотые тесты: `npm run test:golden`
-- Property-based тесты: `npm run test:property`
-- Покрытие тестов: `npm run test:coverage`
-- Dev сервер: `npm run dev`
-- Сборка: `npm run build`
-- Валидация конфигов/схем: `npm run validate:config`
-- Генерация индекса конфигов: `npm run docs:config`
-- Общая валидация (линт+тесты): `npm run validate`
+## 4) Команды
+
+- `npm run dev` (client+proxy), `npm run build`, `npm run start`
+- `npm run lint -- --format codeframe`, `npm run test`, `npm run e2e`
+- `npm run validate:config` (Zod/JSON Schema), `npm run docs:config`
+- `npm run validate` (линт+тесты суммарно)
 
 ---
 
-## 3) Batch‑режим и ошибки (UI‑первая диагностика)
+## 5) Batch & ошибки (UI-первая диагностика)
 
-- Перед любым стартом/загрузкой — **pre‑flight** `/api/health`; при down прокси/нет сети →
-  **немедленный баннер**.
-- **Polling** фронта с адаптивным интервалом; proxy уважает `Retry‑After` при опросе Anthropic
-  (§7–§8 TRS).
-- Обрабатываем и **показываем**: `429`, `413`, `500`, `529`, истёкшие batch‑результаты. Консольные
-  логи **не** заменяют баннеры.
-- Конфигурация лимитов/ретраев в `config/batch.json`, при конфликте гайдов ориентироваться на
-  `doc/best_practices/TechnicalGuidesForClaudeAPIv2.0.md`.
+- Перед стартом single/batch и загрузкой `batch_id` делаем **pre-flight** `/api/health`; при down
+  прокси/нет сети → **моментальный баннер**.
+- Фронт polling статуса адаптивный (1–2s → 3–5s → 10–30s → 30–60s) с jitter; прокси уважает
+  `Retry-After` при опросе Anthropic.
+- Обрабатываем и показываем: `429`, `413`, `500`, `529`, `expired` (≥29 дней). Консоль — вторично.
+- Док-приоритет: `TechnicalGuidesForClaudeAPIv2.0.md` > `Message Batches.md`/`MessageBatches2.md`.
 
 ---
 
-## 4) Reading: подсказки, контекстное меню, reveal‑on‑peek
+## 6) Reading: подсказки/контекст-меню/reveal-on-peek
 
-- **Tooltip‑производительность**: `tooltip.showDelayMs` (по умолчанию 0; можно 3000), `debounceMs`,
-  `cancelOnLeave=true`, **single‑flight**; до истечения порога **не выполнять** запросы.
-- **Приоритет фраз** над словами при пересечении. Позиционирование в пределах viewport; на мобильных
-  — bottom‑sheet/popover.
-- **Контекстное меню** (ПКМ/long‑press): конфиги в `config/actions.json`; плейсхолдеры
-  `%w/%p/%b/%s/%sel/%lv/%tl`; белый список доменов.
-- **Reveal‑on‑peek**: по успешному показу подсказки карточка становится `visible=true`; в Reading
-  остаётся подсветка `peeked` (конфиг стили). Ручная правка видимости в Edit имеет приоритет.
-
----
-
-## 5) Edit: видимость, правки переводов, Restore
-
-- **VISIBLE** чекбокс и **Master Visible** — синхронно влияют на Flashcards/Reading/Translation.
-- Разрешена правка **базового перевода** и **переводов контекстов**; **мгновенная пропагация** в
-  другие режимы.
-- «Править контексты (N)» открывает таблицу/модал; удаление карточки удаляет связанные подсказки.
-- **Restore**: откат к состоянию «после первичной обработки», опционально `Undo` (если включён
-  бэкап). В `reveal‑on‑peek` сбрасывает видимость и `peeked`.
+- **Tooltip perf:** `tooltip.showDelayMs` (0..3000+), `debounceMs`, `cancelOnLeave=true`,
+  **single-flight** (до порога — не грузить подсказку).
+- **Приоритет фраз** над словами; позиционирование внутри viewport; mobile — popover/bottom-sheet.
+- **Context menu** (ПКМ/long-press): `config/actions.json`; плейсхолдеры `%w/%p/%b/%s/%sel/%lv/%tl`;
+  белый список доменов; `_blank` + `noopener`.
+- **Reveal-on-peek:** успешный показ подсказки делает карточку видимой, добавляет `peeked`-подсветку
+  (стили из конфига). Правки в Edit имеют приоритет.
 
 ---
 
-## 6) Import/Export
+## 7) Flashcards/Translation/Edit (ключевые правила)
 
-- **JSON**: полный снапшот состояния (включая пользовательские правки, видимость,
-  i18n/targetLanguage, policy); экспорт → ре‑импорт должен давать **идентичное** состояние.
-- **JSONL** (Anthropic Console): потоковый парсер, агрегация по `custom_id==SID`, порядок строк не
-  важен; отчёт об ошибках. Можно импортировать даже по истечении 29 дней (офлайн‑результат).
-- Стратегии слияния: `replace-all | merge-keep-local | merge-prefer-imported` (дефолт — из конфига
-  `io.import.defaultMerge`).
+- **Flashcards:** ←/→ навигация; Space/↑/↓ flip; `h` hide; контексты: N по умолчанию, «показать
+  больше» до M (из конфигов); flip-анимация/радиусы/шрифт (`Noto Sans Display`) — из конфигов; при
+  переходе всегда показываем **front**.
+- **Translation:** нижняя панель статистик — слова (UAX-29), символы (графемы), предложения (SID),
+  фразы (unique|occurrences) — из конфигов.
+- **Edit:** чекбокс **VISIBLE** + **Master Visible**; правка базового перевода и переводов
+  контекстов с **моментальной** пропагацией; «править контексты (N)» открывает модал/таблицу;
+  **Restore** (откат ко входному результату) + опц. **Undo**.
 
 ---
 
-## 7) Конфиги и документация (обязательно)
+## 8) Import/Export
 
-- Все пользовательские параметры — в `/config/` и документируются в `doc/configs/*.md` **на
-  русском** (назначение, ключи, дефолты, примеры, зависимые ключи, changelog, владелец).
-- Валидация: Zod/JSON Schema на старте (`npm run validate:config`), **fail‑fast** при ошибках.
+- **JSON:** полный снапшот состояния (включая правки/видимость/i18n/targetLanguage/policy). Экспорт
+  → ре-импорт = **бит-в-бит** состояние.
+- **JSONL (Anthropic Console):** потоковый парсер; `custom_id==SID`; порядок строк не важен; отчёт
+  imported/skipped/invalid. Разрешён офлайн-импорт после 29 дней.
+- **Merge-стратегии:** `replace-all | merge-keep-local | merge-prefer-imported` (дефолт — из
+  конфига).
+
+---
+
+## 9) Конфиги и документация
+
+- Все параметры — из `/config/` + Zod/JSON Schema; **RU-документация** в `doc/configs/*.md`
+  (назначение/ключи/дефолты/примеры/зависимости/changelog/owner).
 - Генерация индекса: `npm run docs:config`.
-- Анти‑хардкод линт и скрипт `npm run lint:anti-hardcode` (в CI).
+- Анти-хардкод линт (`lint:anti-hardcode`) в CI: запрещены захардкоженные
+  модели/интервалы/кейкоды/лимиты/шрифты/цвета.
 
 ---
 
-## 8) Стандарты кода и тесты
+## 10) Стандарты кода и тестирование
 
-- **TypeScript**: strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
-- **Иммутабельность** состояний; явные инварианты/ассерты.
-- **Зод‑схемы** на всех границах (proxy↔client, LLM↔proxy, import/export).
-- **Линт‑вывод**: `eslint-formatter-codeframe` (подсветка контекста ошибок).
-- **Тесты**: unit + integration + **E2E (Cypress)**. Добавлять золотые тесты на порядок предложений
-  и property‑based тесты на инварианты.
+- **TypeScript strict**; иммутабельность состояний; явные `assert/invariant` на инвариантах.
+- **Zod** на всех границах: proxy↔client, LLM↔proxy (tools), import/export.
+- **Линт-вывод:** `eslint-formatter-codeframe`.
+- **Тесты:** unit + integration + **E2E (Cypress)**; добавляем **golden-тесты** (порядок
+  предложений) и **property-based** (инварианты).
+- **A11y:** семантика/ARIA, фокус-кольца, контраст в темах.
 
-### Code Style для AI‑агентов
+### Стиль кода (для ИИ-агентов)
 
-- **Функциональный стиль** предпочтителен, избегать скрытых побочных эффектов.
-- **Immutable**‑обновления через spread/структурное клонирование.
-- **Explicit инварианты**: `assert()`/`invariant()` + runtime проверки на ключевых путях.
-- **Комментарии на русском** для бизнес‑логики; **английские термины** — только для техконцепций.
+- Функциональный стиль; без скрытых side-effects.
+- Immutable-обновления; аккуратные редьюсеры/селекторы.
+- Комментарии **на русском** для бизнес-логики; англ. — для техтерминов.
+- Именование: Components — `PascalCase`; funcs/vars — `camelCase`; const — `SCREAMING_SNAKE_CASE`;
+  Types — `PascalCase`.
 
-#### Именование
+---
 
-- Компоненты: `PascalCase` (например, `TextInput`, `BatchRunner`).
-- Функции/переменные: `camelCase` (например, `buildManifest`, `aggregateBySid`).
-- Константы: `SCREAMING_SNAKE_CASE` (например, `BATCH_STATES`).
-- Типы: `PascalCase` (при необходимости префикс `T`).
+## 11) Модули
+
+- `src/types/*` — доменные типы/DTO.
+- `src/utils/manifest.ts` — создание/валидация манифеста.
+- `src/utils/aggregator.ts` — агрегация по SID/JSONL.
+- `src/utils/fsm.ts` — FSM batch-процесса.
+- `src/api/client.ts` — HTTP-клиент + Zod.
+- `src/hooks/*` — бизнес-логика (tooltip controller, batch polling, visibility policy).
+- `src/components/*` — UI (режимы, Import/Export, меню).
+- Proxy: `/api/health`, `/api/llm/single`, `/api/batch/{create,status,result}`.
+
+---
+
+## 12) Как ИИ-агент вносит изменения
+
+1. Определи релиз/этап (см. `plan_X.md`). **Не** добавляй фичи будущих этапов без явного флага.
+2. Сверь с TRS (разделы/Acceptance).
+3. Проверь/дополни конфиги: при отсутствии ключей предложи схему Zod + RU-док.
+4. Измени код **модульно** (адаптеры/сторы/компоненты). Избегай хардкодов.
+5. Добавь/обнови тесты (unit/E2E), i18n-ключи.
+6. Обнови доки.
+7. В ответе/PR приложи **минимальные git-diff** в рамках объявленных путей; кратко: что/зачем/ссылки
+   на § TRS/plan; **риски** и как проверять.
+
+---
+
+## 13) Чек-лист «не повторять ошибки»
+
+- ☐ Нет race conditions (single-flight, FSM, селекторы).
+- ☐ Источник порядка — **Manifest**, не UI/LLM.
+- ☐ FSM переходы детерминированы; без циклов.
+- ☐ DTO/версии схем валидируются; метрики: `schema_mismatch_count`, `order_violation_count`.
+- ☐ Баннеры ошибок появляются **сразу**; консоль — вторично.
+- ☐ Строки/стили/лимиты — из конфигов; i18n покрытие полное.
 
 ### Метрики мониторинга
 
-- `schema_mismatch_count` — несоответствия версий схем.
-- `sig_mismatch_count` — несовпадения сигнатур SID.
-- `missing_ru_count` — отсутствующие переводы/целевой язык.
-- `order_violation_count` — нарушения порядка предложений.
-
-Полезные команды
-
-```bash
-npm run dev
-npm run build
-npm run lint -- --format codeframe
-npm run test && npm run e2e
-npm run validate:config && npm run docs:config
-```
+`schema_mismatch_count`, `sig_mismatch_count`, `missing_target_count`, `order_violation_count`.
 
 ---
 
-## 9) Как ИИ‑агент вносит изменения (процесс)
+## 14) Мысленная модель и отладка
 
-1. Определи релиз и этап: см. `doc/plan/plan_X.md`. Не добавляй фичи из будущих этапов без явного
-   флага.
-2. Сверь требования: найди соответствующие разделы в TRS и Acceptance.
-3. Найди **конфиги**: проверь наличие ключей; если нет — предложи схему Zod + RU‑док.
-4. Измени код модульно: адаптеры/сторы/компоненты. Исключи хардкоды.
-5. Добавь/обнови тесты (unit/E2E) и ключи i18n.
-6. Обнови документацию: указать изменённые ключи, ссылки на TRS/план.
-7. В PR: краткая сводка «что/зачем/ссылки на § TRS», чек‑лист DoD из соответствующего плана.
+- **Манифест первый** → **SID ключ** → **FSM определяет UI** → **Инварианты = безопасность**.
+- Debug: 1) состояние FSM; 2) валидность манифеста (SID/sig); 3) агрегация по SID; 4) Zod-схемы и
+  версии; 5) stop-reasons vs HTTP-ошибки.
 
 ---
 
-## 10) Модули и карта ответственности
-
-- `src/types/` — доменные типы/DTO.
-- `src/utils/manifest.ts` — создание/валидация манифеста.
-- `src/utils/aggregator.ts` — агрегация по SID/JSONL.
-- `src/utils/fsm.ts` — машина состояний batch‑процесса.
-- `src/api/client.ts` — HTTP‑клиент с Zod‑валидацией.
-- `src/hooks/*` — бизнес‑логика (tooltip controller, batch polling, visibility policy).
-- `src/components/*` — UI (Flashcards/Reading/Translation/Edit, Import/Export и пр.).
-
----
-
-## 11) Чек‑лист «не повторять ошибки»
-
-- ☐ **Race conditions** при сборке переводов (использовать single‑flight, мемоизацию, сторы).
-- ☐ Источник порядка — **только** Manifest; не собирать LV/RU из карточек «с конца».
-- ☐ FSM переходы — детерминированы, без циклов.
-- ☐ Все DTO валидируются, версии схем согласованы; метрики `schema_mismatch_count`,
-  `order_violation_count` не растут.
-- ☐ Баннеры ошибок: выводятся сразу; консоль — вторично.
-- ☐ Строки UI и стили — из конфигов/локалей, не из кода.
-
-## 12) Мысленная модель (для ИИ‑агента)
-
-1. **Манифест первый** — всегда начинай с манифеста и SID.
-2. **SID как ключ** — вся агрегация/сборка по SID.
-3. **FSM определяет UI** — состояние UI = проекция FSM.
-4. **Инварианты = безопасность** — любое изменение проверяется тестами/асертами.
-
-### Процесс принятия решений
-
-- Сохраняет ли изменение детерминированность обработки?
-- Не нарушает ли архитектурные инварианты?
-- Покрыто ли изменение нужными тестами (в т.ч. golden/property‑based)?
-- Совместимо ли с FSM и агрегацией по SID?
-
-### Debugging подход
-
-1. Проверить состояние FSM. 2) Валидация манифеста (SID/sig). 3) Проследить агрегацию по SID. 4)
-   Проверить DTO‑схемы и версии.
-
-## 13) Ссылки по проекту
+## 15) Быстрые ссылки
 
 - TRS: `doc/trs/trs_v_5.md`
 - Roadmap: `doc/roadmap/roadmap.md`
-- Планы этапов: `doc/plan/plan_1.md … plan_5.md`
-- Best Practices: `doc/best_practices/*`
+- Планы: `doc/plan/plan_1.md … plan_5.md`
+- Best-Practices: `doc/best_practices/*` (incl. `tool-use.md`, `TechnicalGuidesForClaudeAPIv2.0.md`)
 - README: `README.md`
 
-> Любые расхождения между кодом и TRS/планами нужно указывать в PR и предлагать правку
-> соответствующего документа.
+> При расхождениях между кодом и документами — укажи это в PR и предложи правку TRS/планов.
