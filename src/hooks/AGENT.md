@@ -1,279 +1,243 @@
-# Hooks Agent Guide — `src/hooks`
+# Hooks Agent Guide — `src/hooks` (v5.1)
 
-> Руководство для ИИ‑агентов и разработчиков по созданию и использованию React‑хуков в проекте
-> **flashcards‑v3**. Цель — обеспечить детерминированность пайплайна, отсутствие гонок, конфиг‑first
-> и прозрачный UX ошибок согласно TRS.
-
-## 0) Канон ссылок
+> Руководство для ИИ-агентов и разработчиков по созданию и использованию React-хуков в
+> **flashcards-v3**. Цель — **детерминированный пайплайн**, отсутствие гонок, **config-first**,
+> предсказуемые баннеры ошибок и поддержка **tool-use**/batch-флоу согласно TRS/планам.
 
 - TRS: `doc/trs/trs_v_5.md`
 - Roadmap: `doc/roadmap/roadmap.md`
 - Plans: `doc/plan/plan_1.md … plan_5.md`
-- Best Practices: `doc/best_practices/*` (приоритет `TechnicalGuidesForClaudeAPIv2.0.md`)
-- Общие правила: `AGENT.md`, UI/UX: `Codex.md`, компоненты: `src/components/AGENT.md`
+- Best Practices: `doc/best_practices/*` (приоритет: `TechnicalGuidesForClaudeAPIv2.0.md`,
+  `tool-use.md`)
+- Общие правила: `AGENT.md`, UI/UX: `Codex.md`, компоненты: `src/components/AGENT.md`, утилиты:
+  `src/utils/AGENT.md`
 
 ---
 
-## 1) Базовые принципы хуков
+## 0) Инварианты для хуков
 
-### Задачи хуков
-
-- **Инкапсуляция бизнес-логики** FSM и агрегации.
-- **Мост между утилитами и компонентами**: адаптация pure-функций (из utils/stores) к
-  React-паттернам (state/effects).
-- **Управление async-операциями** с корректной обработкой ошибок и сигналами отмены.
-
-### Требования к реализации
-
-- **Строго типизированный вход/выход** (TS + Zod на внешних границах).
-
-- **Покрытие юнит-тестами критических ветвей** (включая ошибки/таймауты/отмены).
-
-- **Единая обработка ошибок** (нормализация → баннеры/i18n), без «поглощения».
-
-- **Корректный cleanup**: abort/cancel в `useEffect` cleanup, отписка слушателей/таймеров.
-
-- **Чистая архитектура**: хук = инкапсуляция бизнес‑логики и эффектов; компоненты остаются
-  «тонкими».
-
-- **Без гонок**: любой сетевой хук обязан поддерживать отмену (`AbortController`) и
-  **single‑flight** для одинаковых запросов.
-
-- **Config‑first**: никакие значения (тайминги, лимиты, URL, хоткеи) не хардкодятся — берём из
-  `/config/*.json(.*)` через `useConfig()`.
-
-- **i18n/темы**: строки и лейблы не шьём в хуки; только ключи/флаги и возвращение статусов для UI.
-
-- **Валидированные границы**: парсим и валидируем все внешние DTO через Zod‑схемы до возврата
-  наверх.
-
-- **Правила хуков React**: не вызывать условно, не менять порядок; эффекты — с корректными
-  зависимостями.
+- **Manifest/SID — источник истины.** Любая агрегация/сборка идёт **по SID**, порядок прихода данных
+  не важен.
+- **FSM-first.** Хуки управляют процессами через конечные автоматы; никаких «спонтанных» setState.
+- **JSON-only через tools.** Хуки принимают структурированный `tool_use.input` (уже
+  провалидированный адаптером), различают **stop reasons** и ошибки HTTP.
+- **Config-first.** Тайминги, лимиты, хоткеи, URL — только из `/config/*.json(.*)` через
+  `useConfig()`.
+- **Без гонок.** Отмена (`AbortController`), **single-flight**, дедупликация повторных запросов.
+- **Ошибки — в баннеры.** Нормализованные ошибки и статусы выдаются в UI сразу.
 
 ---
 
-## 2) Набор каноничных хуков (контракты)
+## 1) Задача хуков
+
+- Инкапсулировать бизнес-логику (FSM, агрегация, backoff, поллинги, политики видимости).
+- Соединять **чистые утилиты/stores** с компонентами (адаптация под React: state/effects).
+- Управлять сетью/таймерами/отменой и не допускать утечек (cleanup).
+
+---
+
+## 2) Каноничные хуки и контракты
 
 ### 2.1 `useConfig()`
 
-Возвращает слитый и провалидированный конфиг приложения (кешируется в контексте).
-
-- Источник: `/config/*.json` + Zod‑схемы.
-- При ошибке валидации — бросок исключения (ловится ErrorBoundary) + баннер.
+Возвращает слитый и **провалидированный** конфиг (кэш/контекст). Ошибки валидации — в
+ErrorBoundary + баннер.
 
 ### 2.2 `useHealth()`
 
-Pre‑flight проверка прокси и внешней сети перед любой операцией.
-
-- `const { status, check, lastError } = useHealth();`
-- `status`: `idle | checking | ok | down`.
-- `check()` дергает `/api/health` с таймаутом из `config/network.json`.
-- При `down` — триггерит глобальный баннер ошибок (через `useErrorBanners()`).
-
-### 2.3 `useBatch()` (создание/статус/результаты)
-
-Инкапсулирует batch‑оркестрацию и FSM. **Решающее место для backoff/jitter и Retry‑After.**
+Pre-flight для `/api/health` перед **single**/**batch**.
 
 ```ts
-interface UseBatchState {
-  fsm: 'idle' | 'submitted' | 'in_progress' | 'ready' | 'failed';
-  create: (payload: BatchCreate) => Promise<{ batchId: string }>;
-  pollStatus: (batchId: string) => Promise<BatchStatus>;
-  fetchResult: (batchId: string) => Promise<BatchResult>;
+type Health = 'idle' | 'checking' | 'ok' | 'down';
+function useHealth(): { status: Health; check(): Promise<void>; lastError?: Error };
+```
+
+— таймауты/URL из `network.json`; при `down` → глобальный баннер.
+
+### 2.3 `useBatch()` — create/status/result + FSM
+
+Оркестрация Message Batches: backoff + jitter, уважение `Retry-After`, история `batchId`.
+
+```ts
+type BatchFsm = 'idle' | 'submitted' | 'in_progress' | 'ready' | 'failed';
+interface UseBatch {
+  fsm: BatchFsm;
+  create(payload: BatchCreate): Promise<{ batchId: string }>;
+  pollStatus(batchId: string): Promise<BatchStatus>;
+  fetchResult(batchId: string): Promise<BatchResult>;
   error?: BatchError;
 }
 ```
 
 Правила:
 
-- При `create` и `pollStatus` **уважать** `Retry-After`; при отсутствии — применять **адаптивный
-  polling** (1–2s → 3–5s → 10–30s → 30–60s) с jitter, как в TRS.
-- Коды `429/413/500/529` — нормализовать в `BatchError` (локализуемые сообщения + советы). 429/529 →
-  backoff c jitter; 413 → резкий отказ + подсказка сократить/изменить размер.
-- Хранить последнее известное состояние в сторе, чтобы UI не опрашивал сеть чаще, чем нужно.
-- Вести историю `batchId` (с метками `expired` ≥ 29 дней) — отдавать селектор в `useBatchHistory()`.
+- 429/529 → экспоненциальный backoff (+jitter) и honor `Retry-After`.
+- 413 → немедленный отказ с советом (лимит конфигом).
+- История ID (с меткой **expired** ≥ 29 дней) — через `useBatchHistory()`.
 
 ### 2.4 `useBatchHistory()`
 
-- CRUD для локальной истории `batch_id` (добавление при успешном create, отметка просрочки по дате
-  создания).
-- Селектор для списка в UI + действия «загрузить», «удалить».
+CRUD истории `batch_id` (add/markExpired/remove/list). В UI: список + «Загрузить/Удалить».
 
-### 2.5 `useTooltipController()` (Reading)
+### 2.5 `useLLMToolsEmitter()` — single-вызовы через tools
 
-Контролирует подсказки (tooltips) с задержками/отменой/единственным полётом.
+Хук поверх адаптера LLM, **понимает tool-use** и **stop reasons**:
+
+```ts
+interface ToolCallResult<T> {
+  ok: boolean;
+  data?: T; // tool_use.input после Zod-валидации
+  stopReason?: 'max_tokens' | 'tool_use' | 'end_turn' | 'unknown';
+  error?: NormalizedError; // HTTP/схемы/сети
+}
+function useLLMToolsEmitter<TSchema>(): {
+  invoke(input: PromptInput): Promise<ToolCallResult<TSchema>>;
+};
+```
+
+Политика:
+
+- `stop_reason: "max_tokens"` → вернуть `ok=false`, `stopReason="max_tokens"`, чтобы UI мог
+  предложить **retry**; для батчей — делегировать split-retry в `useBatch()`/оркестратор.
+
+### 2.6 `useTooltipController()` (Reading)
+
+Контролирует задержку/отмену/единственный полёт и **visibility-event** для `reveal-on-peek`.
 
 ```ts
 interface TooltipController {
-  onEnter: (anchor: HTMLElement, req: () => Promise<any>) => void;
-  onLeave: () => void;
-  cancelAll: () => void;
+  onEnter(anchor: HTMLElement, req: () => Promise<void>): void; // запускается после delay
+  onLeave(): void;
+  cancelAll(): void;
 }
 ```
 
-Поведение:
+Правила:
 
-- Брать `showDelayMs`, `debounceMs`, `cancelOnLeave` из `config/reading.json`.
-- Если `request.strategy === 'afterDelay'`, до истечения `showDelayMs` **не запускать** запросов.
-- Поддерживать **single‑flight** (не более одного запроса одновременно). При новом входе —
-  предыдущий отменяется.
+- До `showDelayMs` **не** выполнять запрос (если `request.strategy="afterDelay"`).
+- Один in-flight; новый вход отменяет старый.
+- На успешный показ → эмит «peeked/visible» (через `useVisibilityPolicy()`).
 
-### 2.6 `useReadingHints()`
+### 2.7 `useReadingHints()`
 
-- Разрешает конфликт слов и фраз: при пересечении выигрывает **фраза**.
-- Возвращает структуру для рендера легенды и классов подсветки (из конфига).
+Разрешение пересечений «слово/фраза» (выигрывает **фраза**), отдаёт классы/легенду из конфига.
 
-### 2.7 `useVisibilityPolicy()`
+### 2.8 `useVisibilityPolicy()`
 
-Поддержка `all-visible` (дефолт) и `reveal-on-peek`.
+Поддержка `all-visible`/`reveal-on-peek`. Событие **подсказка показана** → `visible=true`,
+`peeked=true`. Персист/экспорт значений; при ручных правках в Edit — приоритет за Edit.
 
-- На событие «подсказка показана» → `visible=true` и отметка `peeked=true`.
-- Экспорт/импорт персистит `visible/peeked`; ручные правки в Edit имеют приоритет.
+### 2.9 `useDeckNav()` / `useCardActions()` (Flashcards)
 
-### 2.8 `useDeckNav()`/`useCardActions()` (Flashcards)
+Навигация и действия `next/prev/flip/hide`. Гарантия: при переходе → **front**.
 
-- Предоставляют действия `next/prev/flip/hide` (hotkeys берём из конфига `flashcards.keybinds`).
-- Гарантируют, что при переходе карточка отображает **front** сперва.
+### 2.10 `useHotkeys()`
 
-### 2.9 `useHotkeys()`
+Регистрация хоткеев из конфигов; активность по фокусу контейнера; корректный cleanup.
 
-- Регистрирует хоткеи из конфигов; активен только при фокусе соответствующего контейнера;
-  освобождает слушатели при unmount.
+### 2.11 `useImportExport()`
 
-### 2.10 `useImportExport()`
-
-- **Export JSON**: сериализация полного состояния (правки, видимость, метаданные
+- **Export JSON**: полный снапшот (правки, видимость,
   `appVersion/schemaVersion/exportedAt/locale/targetLanguage`).
-- **Import JSON**: diff‑превью + стратегии `replace-all | merge-keep-local | merge-prefer-imported`
+- **Import JSON**: diff-превью + стратегии `replace-all | merge-keep-local | merge-prefer-imported`
   (дефолт из `io.import.defaultMerge`).
-- **Import JSONL** (v1.1): потоковый парсер (строка→JSON), агрегация по `custom_id==SID`. Отчёт по
-  ошибкам строк.
+- **Import JSONL** (v1.1): потоковый парсер, `custom_id==SID`, агрегация, отчёт
+  imported/skipped/invalid.
 
-### 2.11 `useRestore()`
+### 2.12 `useRestore()`
 
-- Создаёт бэкап входного состояния «после первичной обработки».
-- `restore()` откатывает все ручные правки/добавления/удаления; в `reveal-on-peek` — сбрасывает
-  `visible/peeked`.
-- Опциональный `undo()` в окне N минут (из конфигов).
+Откат к входному состоянию после первичной обработки; опц. `Undo` (TTL из конфигов). В
+`reveal-on-peek` сбрасывает `visible/peeked`.
 
-### 2.12 `useErrorBanners()`
+### 2.13 `useErrorBanners()`
 
-- Унифицированный диспетчер баннеров (ошибки/инфо) с i18n ключами.
-- Маппит коды `429/413/500/529` + down proxy/network + expired batch на локализованные подсказки.
+Единый диспетчер баннеров (i18n-ключи), маппинг кодов 429/413/500/529, сети/прокси/expired, а также
+**stop_reason: "max_tokens"** (совет «Повторить»/split-retry).
 
-### 2.13 `useMediaAnchors()` (v1.3)
+### 2.14 `useContextMenuActions()` (v1.1)
 
-- Работает с `{sid,start,end}`; отдаёт «текущий SID» по `currentTime()` плеера и функции перехода к
-  сегменту (с pre/post‑roll из `media.json`).
+Сборка пунктов контекстного меню Reading: плейсхолдеры `%w/%p/%b/%s/%sel/%lv/%tl`, URI-кодирование,
+белый список доменов.
+
+### 2.15 `useMediaAnchors()` (v1.3)
+
+Работа с `{sid,start,end}`; вычисляет активный SID по `currentTime()` плеера; `playSegment(SID)`
+учитывает pre/post-roll из `media.json`.
 
 ---
 
-## 3) Сетевые паттерны: backoff, Retry‑After, cancel, single‑flight
+## 3) Сетевые паттерны
 
-### 3.1 Backoff с jitter (пример)
+### 3.1 Backoff + jitter
 
 ```ts
 export function expBackoff(attempt: number, baseMs: number, maxMs: number) {
-  const exp = Math.min(maxMs, baseMs * Math.pow(2, attempt));
-  const jitter = Math.random() * 0.4 * exp; // +/-40%
+  const exp = Math.min(maxMs, baseMs * 2 ** attempt);
+  const jitter = Math.random() * 0.4 * exp;
   return Math.max(100, exp - jitter);
 }
 ```
 
-### 3.2 Уважение `Retry‑After`
+### 3.2 Honor `Retry-After`
 
 ```ts
-function parseRetryAfter(h: string | undefined) {
+export function parseRetryAfter(h?: string | null) {
   if (!h) return null;
   const sec = Number(h);
   if (Number.isFinite(sec)) return sec * 1000;
-  const t = Date.parse(h);
-  return Number.isFinite(t) ? Math.max(0, t - Date.now()) : null;
+  const dt = Date.parse(h);
+  return Number.isFinite(dt) ? Math.max(0, dt - Date.now()) : null;
 }
 ```
 
-### 3.3 Отмена запросов и единственный полёт
+### 3.3 Cancel + single-flight
 
-```ts
-export function singleFlight<T>(key: string, fn: () => Promise<T>) {
-  const cache = new Map<string, Promise<T>>();
-  return () => {
-    if (cache.has(key)) return cache.get(key)!;
-    const p = fn().finally(() => cache.delete(key));
-    cache.set(key, p);
-    return p;
-  };
-}
-
-export async function fetchWithCancel(url: string, opts: RequestInit & { signal?: AbortSignal }) {
-  const ctl = new AbortController();
-  const signal = opts.signal ?? ctl.signal;
-  const res = await fetch(url, { ...opts, signal });
-  return { res, cancel: () => ctl.abort() };
-}
-```
+- Каждый сетевой хук — с `AbortController`.
+- Дубликаты запросов — через **single-flight** на ключ (например, SID).
 
 ---
 
-## 4) Конфиги и без‑хардкодов
+## 4) Tool-use / stop-reasons (важно)
 
-- Тайминги polling/задержек/анимаций/лимитов/размеров/ хоткеев/цветов/шрифтов — **только** из
-  конфигов.
-- Имя модели/endpoint/базовый URL — из конфигов (`llm.json`, `network.json`).
-- Ключи i18n — централизованно в `/src/locales/*`.
-
----
-
-## 5) Тестирование хуков
-
-- **Unit**: msw для HTTP, jest fake timers для delay/debounce/backoff; проверять отмену и
-  single‑flight.
-- **Property‑based**: корректность агрегации по SID, инварианты FSM, устойчивость к перемешанным
-  JSONL строкам.
-- **Integration/RTL**: хук + тестовый компонент; сценарии ошибок сети/прокси; баннеры отображаются
-  немедленно.
-- **E2E (Cypress)**: счастливые пути и негативные кейсы (429/413/500/529, expired batch, down proxy,
-  нет сети).
+- Single-вызовы: `useLLMToolsEmitter()` возвращает **`tool_use.input`** (после Zod-валидации) или
+  `stopReason`.
+- Batch: парсинг JSONL → маппинг по `custom_id==SID`; для `stop_reason: "max_tokens"` **не** валить
+  весь батч — UI показывает баннер и предлагает **retry/split-retry** для проблемного чанка.
+- **Prompt caching**: стабилизируем system/tools на стороне адаптера; хук не должен шуметь конфигами
+  в запросах (избегать лишних вариаций параметров).
 
 ---
 
-## 6) Производительность
+## 5) Конфиги и анти-хардкод
 
-- Дебаунсы и троттлы из конфигов; минимизировать перечерчивания через селекторы/мемоизацию.
-- Для больших коллекций — не возвращать «сырые» массивы без мемо‑срезов.
-- В Reading — **single‑flight** и `request.strategy='afterDelay'` для снятия нагрузки.
+- Тайминги (tooltip/polling), лимиты (chunk sizes, maxFileSizeMB), хоткеи, URL, имена моделей —
+  **только** из конфигов (`useConfig()`); линт «анти-хардкод» обязателен.
+- Строки — через i18n; темы из токенов.
 
 ---
 
-## 7) Примеры
+## 6) Тестирование хуков
 
-### 7.1 `useHealth` (скелет)
+- **Unit:** msw для HTTP; fake timers для delay/debounce/backoff; проверять отмену и single-flight.
+- **Property-based:** инварианты агрегации по SID, устойчивость к перестановке JSONL строк,
+  корректность FSM переходов.
+- **Integration/RTL:** тестовый компонент + хук; баннеры при 429/413/500/529/expired/down-proxy.
+- **E2E (Cypress):** счастливые и негативные пути (health-down, сети нет, expired batch,
+  reveal-on-peek, контекстное меню).
 
-```ts
-export function useHealth() {
-  const cfg = useConfig();
-  const [status, setStatus] = useState<'idle' | 'checking' | 'ok' | 'down'>('idle');
-  const [lastError, setLastError] = useState<Error | undefined>();
-  const check = useCallback(async () => {
-    setStatus('checking');
-    try {
-      const ac = new AbortController();
-      const res = await fetch(cfg.network.healthUrl || '/api/health', {
-        signal: ac.signal,
-        method: 'GET',
-      });
-      if (!res.ok) throw new Error('HEALTH_BAD_STATUS');
-      setStatus('ok');
-    } catch (e) {
-      setLastError(e as Error);
-      setStatus('down');
-    }
-  }, [cfg.network.healthUrl]);
-  return { status, check, lastError };
-}
-```
+---
 
-### 7.2 `useTooltipController` (с задержкой и single‑flight)
+## 7) Производительность
+
+- В Reading — `request.strategy="afterDelay"`, debounce, single-flight; отмена на `mouseleave`.
+- Мемо-срезы/селекторы; не возвращать огромные неизолированные массивы из хука.
+- Ленивая подгрузка тяжёлых частей (JSONL parser, media).
+
+---
+
+## 8) Примеры
+
+### 8.1 `useTooltipController` (delay + single-flight)
 
 ```ts
 export function useTooltipController(): TooltipController {
@@ -281,7 +245,7 @@ export function useTooltipController(): TooltipController {
   const timer = useRef<number | undefined>();
   const inFlight = useRef<Promise<any> | null>(null);
 
-  const cancel = () => {
+  const cancelAll = () => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = undefined;
@@ -291,24 +255,24 @@ export function useTooltipController(): TooltipController {
     const start = () => {
       if (!inFlight.current) inFlight.current = req().finally(() => (inFlight.current = null));
     };
-    if (tooltip.showDelayMs > 0) {
+    if (tooltip.showDelayMs > 0 && tooltip.request?.strategy === 'afterDelay')
       timer.current = window.setTimeout(start, tooltip.showDelayMs);
-    } else start();
+    else start();
   };
   const onLeave = () => {
-    if (tooltip.cancelOnLeave) cancel();
+    if (tooltip.cancelOnLeave) cancelAll();
   };
-  return { onEnter, onLeave, cancelAll: cancel };
+  return { onEnter, onLeave, cancelAll };
 }
 ```
 
-### 7.3 `useBatch` (фрагмент polling)
+### 8.2 Фрагмент polling в `useBatch`
 
 ```ts
-const schedule = [1500, 3000, 12000, 45000]; // пример: заменить на значения из конфига
-export function useBatch(): UseBatchState {
+export function useBatch(): UseBatch {
   const cfg = useConfig();
-  const [fsm, setFsm] = useState<'idle' | 'submitted' | 'in_progress' | 'ready' | 'failed'>('idle');
+  const [fsm, setFsm] = useState<BatchFsm>('idle');
+
   const pollStatus = useCallback(
     async (id: string) => {
       setFsm('in_progress');
@@ -316,42 +280,59 @@ export function useBatch(): UseBatchState {
       while (true) {
         const r = await fetch(`/api/batch/status?id=${id}`);
         if (!r.ok) {
-          /* нормализовать ошибку */
+          /* normalize → throw/return error for banner */
         }
         const retryAfter = parseRetryAfter(r.headers.get('Retry-After'));
-        const body = await r.json();
+        const body: BatchStatus = await r.json();
         if (body.state === 'ready' || body.state === 'failed') {
           setFsm(body.state);
           return body;
         }
-        const base = schedule[Math.min(attempt, schedule.length - 1)];
+        const base =
+          cfg.batch.pollScheduleMs?.[Math.min(attempt, cfg.batch.pollScheduleMs.length - 1)] ??
+          1500;
         const wait = retryAfter ?? expBackoff(attempt++, base, cfg.batch.maxPollIntervalMs);
         await new Promise((res) => setTimeout(res, wait));
       }
     },
-    [cfg.batch.maxPollIntervalMs],
+    [cfg.batch],
   );
+
   return {
     fsm,
     create: async () => {
-      /*...*/
+      /* … */
     },
     pollStatus,
     fetchResult: async () => {
-      /*...*/
+      /* … */
     },
   };
 }
 ```
 
+### 8.3 Обработка `max_tokens` в single-вызове
+
+```ts
+const { invoke } = useLLMToolsEmitter<MySchema>();
+const r = await invoke(prompt);
+if (!r.ok && r.stopReason === 'max_tokens') {
+  // отдать в UI сигнал для "Повторить"/повысить лимит; не считать это HTTP-ошибкой
+}
+```
+
 ---
 
-## 8) Чек‑лист перед PR
+## 9) Чек-лист перед PR
 
-- [ ] Нет хардкодов; все значения читаются из `useConfig()`.
-- [ ] Поддерживаются отмена запросов и **single‑flight**; отсутствуют гонки.
-- [ ] Учитывается `Retry‑After`; backoff с jitter реализован.
-- [ ] Коды `429/413/500/529` нормализуются и приводят к баннерам.
-- [ ] В `reveal-on-peek` события подсказок корректно меняют видимость карточек.
-- [ ] Хуки протестированы (unit/RTL/E2E); фейковые таймеры покрывают задержки/дебаунсы.
-- [ ] Ссылки на разделы TRS/plan добавлены в PR.
+- [ ] Нет хардкодов; все значения берутся из `useConfig()`.
+- [ ] Поддерживаются **отмена** и **single-flight**; отсутствуют гонки.
+- [ ] Honor `Retry-After`, backoff + jitter реализованы.
+- [ ] Коды 429/413/500/529 и **expired** маппятся в баннеры; down-proxy/нет сети — немедленные
+      баннеры.
+- [ ] Поддержаны **tool-use** и **stop reasons** (особенно `max_tokens`).
+- [ ] `reveal-on-peek`: событие подсказки корректно меняет `visible/peeked`.
+- [ ] Unit/RTL/E2E тесты обновлены; fake timers покрывают delay/debounce/backoff.
+- [ ] Ссылки на §§ TRS/plan добавлены в PR; изменения согласованы с `src/components/AGENT.md`.
+
+---
