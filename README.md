@@ -198,6 +198,16 @@ type Payload = Card[] | { flashcards: Card[] }; // tool-use → {flashcards}, el
 - **Handled codes:** `429` (rate limits), `413` (request too large), `500` (server error), `529`
   (overloaded). Localized banners and retry policies per code.
 - **Expired batches:** history marks `expired` after **29 days** (Anthropic retention).
+
+---
+
+## 📚 Документация и проверки
+
+- Конфиги: RU‑доки в `doc/configs/*.md`, индекс — `doc/configs/CONFIG_INDEX.md`.
+- Валидация конфигов: `npm run validate:config` (fail‑fast отчёт, Zod).
+- Линт (codeframe): `npm run lint -- --format codeframe`.
+- Анти‑хардкод: `npm run lint:anti-hardcode`.
+- Тесты: `npm run test`, E2E (smoke): `npm run e2e`.
 - **Docs priority:** if `Message Batches.md` conflicts with `TechnicalGuidesForClaudeAPIv2.0.md`,
   follow the v2.0 guide (after official docs).
 

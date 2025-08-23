@@ -1,0 +1,8 @@
+{
+  "stats": {
+    "words": true,
+    "graphemes": true,
+    "sentences": true,
+    "phrases": true
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "contexts": { "default": 1, "max": 3 },
+  "fontFamily": "Noto Sans Display",
+  "visibilityPolicy": "all-visible"
+}

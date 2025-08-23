@@ -3,9 +3,10 @@
 // - Безопасные таймауты/отмена (AbortController)
 // - Явные коды ошибок и признак retryable
 // - Жёсткая Zod-валидация результата (ZBatchResultV1)
-// - Поддержка модели через заголовок X-LLM-Model (по умолчанию: "claude-3-haiku-20240307")
+// - Поддержка модели через заголовок X-LLM-Model (значение берём из конфигурации llm.defaultModel)
 // - Обратная совместимость по форме тела: { manifest }
 
+import { config as appConfig } from '../config';
 import { ZBatchResultV1, type BatchResultV1 } from '../types/dto';
 import type { Manifest } from '../types/manifest';
 
@@ -62,10 +63,10 @@ function mapHttpError(res: Response, baseMessage: string, code: string): ApiErro
 type ClientConfig = {
   baseUrl?: string;
   timeoutMs?: number;
-  model?: string; // по умолчанию: "claude-3-haiku-20240307"
+  model?: string; // по умолчанию берём из config.llm.defaultModel
 };
 
-class ClaudeApiClient {
+class LlmApiClient {
   private baseUrl: string;
   private timeout: number;
   private model: string;
@@ -74,9 +75,11 @@ class ClaudeApiClient {
     const envBase =
       (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) || '/api';
 
-    this.baseUrl = String(cfg.baseUrl ?? envBase).replace(/\/+$/, '');
-    this.timeout = Math.max(1000, (cfg.timeoutMs ?? 15_000) | 0);
-    this.model = cfg.model ?? 'claude-3-haiku-20240307';
+    const netCfg = appConfig.network;
+    const llmCfg = appConfig.llm;
+    this.baseUrl = String(cfg.baseUrl ?? envBase ?? netCfg.apiBaseUrl).replace(/\/+$/, '');
+    this.timeout = Math.max(1000, (cfg.timeoutMs ?? netCfg.requestTimeoutMs) | 0);
+    this.model = cfg.model ?? llmCfg.defaultModel;
   }
 
   // Конфигурация
@@ -112,7 +115,8 @@ class ClaudeApiClient {
    */
   async submitBatch(manifest: Manifest): Promise<{ batchId: string; estimatedTime?: number }> {
     try {
-      const res = await this.fetchWithTimeout(`${this.baseUrl}/claude/batch`, {
+      const routeBase = appConfig.network.llmRouteBase;
+      const res = await this.fetchWithTimeout(`${this.baseUrl}${routeBase}/batch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -161,8 +165,9 @@ class ClaudeApiClient {
    */
   async getBatchResult(batchId: string): Promise<BatchResultV1> {
     try {
+      const routeBase = appConfig.network.llmRouteBase;
       const res = await this.fetchWithTimeout(
-        `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}`,
+        `${this.baseUrl}${routeBase}/batch/${encodeURIComponent(batchId)}`,
       );
 
       if (res.status === 202 || res.status === 204) {
@@ -225,8 +230,9 @@ class ClaudeApiClient {
     progress?: number;
     error?: string;
   }> {
+    const routeBase = appConfig.network.llmRouteBase;
     const res = await this.fetchWithTimeout(
-      `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}/status`,
+      `${this.baseUrl}${routeBase}/batch/${encodeURIComponent(batchId)}/status`,
     );
     if (!res.ok) {
       throw mapHttpError(res, 'Failed to get batch status', 'STATUS_FAILED');
@@ -242,8 +248,9 @@ class ClaudeApiClient {
    * Отмена батча. 404 трактуем как «уже нет/не существует» — не считаем ошибкой.
    */
   async cancelBatch(batchId: string): Promise<void> {
+    const routeBase = appConfig.network.llmRouteBase;
     const res = await this.fetchWithTimeout(
-      `${this.baseUrl}/claude/batch/${encodeURIComponent(batchId)}`,
+      `${this.baseUrl}${routeBase}/batch/${encodeURIComponent(batchId)}`,
       { method: 'DELETE' },
     );
     if (!res.ok && res.status !== 404) {
@@ -293,7 +300,7 @@ class ClaudeApiClient {
 }
 
 // Экземпляр по умолчанию
-export const apiClient = new ClaudeApiClient();
+export const apiClient = new LlmApiClient();
 
 // Утилиты для retry/UX
 export const isRetryableError = (error: unknown): boolean =>

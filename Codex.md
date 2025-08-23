@@ -215,7 +215,20 @@ styles/               # tokens.css, tailwind setup
 
 ---
 
-## 11) Сеть/клиент
+## 11) Конфиги и документация
+
+- Все настройки — в `/config/` + **RU‑доки** `doc/configs/*.md`
+  (назначение/ключи/дефолты/примеры/зависимости/валидация/pitfalls/changelog).
+- Валидация: `npm run validate:config` (Zod, fail‑fast отчёт).
+- Индекс: `doc/configs/CONFIG_INDEX.md` (таблица всех конфигов). (Если настроено —
+  `npm run docs:config`).
+- Анти‑хардкод: `npm run lint:anti-hardcode` (запрещает модели/интервалы/кейкоды/лимиты в коде).
+- Ключевые файлы: `app.json`, `i18n.json`, `theme.json`, `network.json`, `llm.json`, `batch.json`,
+  `flashcards.json`, `reading.json`, `translation.json`, `edit.json`, `io.json`.
+
+---
+
+## 12) Сеть/клиент
 
 - **HTTP-клиент** (`api/client.ts`): fetch wrapper + Zod-валидация DTO; таймауты/ретраи из
   `config/network.json`; уважать `Retry-After`.
@@ -224,7 +237,7 @@ styles/               # tokens.css, tailwind setup
 
 ---
 
-## 12) Контекстное меню (v1.1)
+## 13) Контекстное меню (v1.1)
 
 - Конфиг `config/actions.json`: пункты
   `{id,titleKey,type,enabled,urlTemplate/payload,target,security.allowedHosts}`.
@@ -233,7 +246,7 @@ styles/               # tokens.css, tailwind setup
 
 ---
 
-## 13) Media (v1.3)
+## 14) Media (v1.3)
 
 - `PlayerAdapter` (HTML5): `mount/play/pause/seek/currentTime/destroy`; события
   `timeupdate|ended|error`.
@@ -242,7 +255,7 @@ styles/               # tokens.css, tailwind setup
 
 ---
 
-## 14) Профили/подписки/локальный NLP (v2.0)
+## 15) Профили/подписки/локальный NLP (v2.0)
 
 - Сервер: Fastify/Express + Prisma (Postgres/SQLite dev).
 - Auth: JWT (HttpOnly), CSRF защита.
@@ -251,7 +264,7 @@ styles/               # tokens.css, tailwind setup
 
 ---
 
-## 15) Git/PR процесс
+## 16) Git/PR процесс
 
 Каждый PR указывает релиз/этап (`plan_X.md`) + ссылки на § TRS и изменённые конфиги/доки.
 
@@ -266,7 +279,7 @@ styles/               # tokens.css, tailwind setup
 
 ---
 
-## 16) Примеры (сокращённые)
+## 17) Примеры (сокращённые)
 
 **Tooltip controller:**
 
@@ -302,7 +315,7 @@ function applyMasterVisible(cards: Card[], visible: boolean, filter?: (c: Card) 
 
 ---
 
-## 17) Анти-паттерны (не допускать)
+## 18) Анти-паттерны (не допускать)
 
 - Сборка LV/RU из UI/порядка ответа LLM — **только** из Manifest/SID.
 - Async-состояния компонентов, влияющие на порядок — переносить в FSM/hooks.
@@ -313,7 +326,7 @@ function applyMasterVisible(cards: Card[], visible: boolean, filter?: (c: Card) 
 
 ---
 
-## 18) Соответствие планам релизов
+## 19) Соответствие планам релизов
 
 - **plan_1.md (MVP):** §4, §5, §6, §7.
 - **plan_2.md (v1.1):** контекстное меню, JSONL, Restore/Undo, reveal-on-peek.
@@ -323,7 +336,7 @@ function applyMasterVisible(cards: Card[], visible: boolean, filter?: (c: Card) 
 
 ---
 
-## 19) Быстрые ссылки
+## 20) Быстрые ссылки
 
 - TRS: `doc/trs/trs_v_5.md`
 - Roadmap: `doc/roadmap/roadmap.md`

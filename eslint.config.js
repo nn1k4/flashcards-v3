@@ -87,6 +87,14 @@ export default [
     },
   },
 
+  // Stores/infra: допускаем экспорт не-компонентов рядом с провайдерами
+  {
+    files: ['src/stores/**/*.{ts,tsx}', 'src/config/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+
   // Тесты (Vitest): ослабляем часть правил
   {
     files: ['**/*.test.{ts,tsx}', '**/__tests__/**/*.{ts,tsx}'],

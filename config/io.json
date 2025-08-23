@@ -1,0 +1,4 @@
+{
+  "import": { "allowed": ["json"], "maxFileSizeMB": 20, "defaultMerge": "merge-prefer-imported" },
+  "export": { "formats": ["json"], "includeMeta": true }
+}

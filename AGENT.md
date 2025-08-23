@@ -131,11 +131,14 @@ RU/target по SID ← Каноникализация
 
 ## 9) Конфиги и документация
 
-- Все параметры — из `/config/` + Zod/JSON Schema; **RU-документация** в `doc/configs/*.md`
-  (назначение/ключи/дефолты/примеры/зависимости/changelog/owner).
-- Генерация индекса: `npm run docs:config`.
-- Анти-хардкод линт (`lint:anti-hardcode`) в CI: запрещены захардкоженные
-  модели/интервалы/кейкоды/лимиты/шрифты/цвета.
+- Все параметры — в `/config/*.json`; валидация Zod в `src/types/config/*` (см. TRS §16).
+- **RU‑доки** по каждому конфигу: `doc/configs/*.md`
+  (назначение/ключи/дефолты/примеры/зависимости/валидация/pitfalls/changelog/owner).
+- Индекс конфигов: `doc/configs/CONFIG_INDEX.md` (таблица name|path|schema|updated|owner). (Если
+  настроено — команда `npm run docs:config`).
+- Проверки:
+  - `npm run validate:config` — fail‑fast отчёт по всем конфига‑файлам;
+  - `npm run lint:anti-hardcode` — запрет моделей/интервалов/кейкодов/лимитов в коде.
 
 ---
 
