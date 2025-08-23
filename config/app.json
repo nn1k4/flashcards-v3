@@ -1,0 +1,6 @@
+{
+  "appName": "flashcards-v3",
+  "version": "0.1.0",
+  "defaultLocale": "en",
+  "supportedLocales": ["en", "ru"]
+}

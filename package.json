@@ -13,12 +13,15 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "validate": "npm run type-check && npm run test",
+    "validate:config": "node scripts/validate-config.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "eslint . --format codeframe",
+    "lint:fix": "eslint . --fix --format codeframe",
     "prepare": "husky",
-    "lint-staged:run": "lint-staged"
+    "lint-staged:run": "lint-staged",
+    "lint:anti-hardcode": "node scripts/lint-anti-hardcode.mjs",
+    "e2e": "vitest run src/__tests__/e2e/theme-i18n.smoke.test.tsx"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [

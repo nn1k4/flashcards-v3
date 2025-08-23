@@ -1,0 +1,7 @@
+{
+  "default": "system",
+  "darkClass": "dark",
+  "tokens": {
+    "primary": "#1e40af"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "polling": {
+    "stages": [
+      { "fromSec": 0, "minMs": 1000, "maxMs": 2000 },
+      { "fromSec": 10, "minMs": 3000, "maxMs": 5000 },
+      { "fromSec": 60, "minMs": 10000, "maxMs": 30000 },
+      { "fromSec": 600, "minMs": 30000, "maxMs": 60000 }
+    ],
+    "respectRetryAfter": true
+  }
+}

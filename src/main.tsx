@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app/App';
 import './index.css';
+import { I18nProvider } from './stores/i18nStore';
+import { ThemeProvider } from './stores/themeStore';
 
 // Глобальная обработка ошибок
 window.addEventListener('unhandledrejection', (event) => {
@@ -16,6 +18,10 @@ if (!rootElement) throw new Error('Root element not found');
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <App />
+    <I18nProvider>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </I18nProvider>
   </React.StrictMode>,
 );

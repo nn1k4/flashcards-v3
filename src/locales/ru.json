@@ -1,0 +1,13 @@
+{
+  "app.title": "Флэшкарты v3",
+  "app.subtitle": "Площадка для изучения латышского",
+  "ui.start": "Запустить",
+  "ui.cancel": "Отменить",
+  "ui.reset": "Сброс",
+  "ui.export": "Экспорт JSON",
+  "ui.language": "Язык",
+  "ui.theme": "Тема",
+  "theme.light": "Светлая",
+  "theme.dark": "Тёмная",
+  "theme.system": "Системная"
+}

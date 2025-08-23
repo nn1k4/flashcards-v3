@@ -1,0 +1,13 @@
+{
+  "app.title": "Flashcards v3",
+  "app.subtitle": "Latvian learning playground",
+  "ui.start": "Start",
+  "ui.cancel": "Cancel",
+  "ui.reset": "Reset",
+  "ui.export": "Export JSON",
+  "ui.language": "Language",
+  "ui.theme": "Theme",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.system": "System"
+}

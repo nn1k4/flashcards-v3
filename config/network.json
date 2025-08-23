@@ -1,0 +1,6 @@
+{
+  "apiBaseUrl": "/api",
+  "requestTimeoutMs": 15000,
+  "healthTimeoutMs": 3000,
+  "llmRouteBase": "/claude"
+}

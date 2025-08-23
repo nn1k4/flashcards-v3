@@ -1,0 +1,8 @@
+{
+  "tooltip": {
+    "showDelayMs": 0,
+    "debounceMs": 150,
+    "cancelOnLeave": true,
+    "singleFlight": true
+  }
+}
