@@ -17,13 +17,21 @@ export class ApiError extends Error {
   code: string;
   retryable: boolean;
   status?: number;
+  retryAfterMs?: number;
 
-  constructor(message: string, code: string, retryable = false, status?: number) {
+  constructor(
+    message: string,
+    code: string,
+    retryable = false,
+    status?: number,
+    retryAfterMs?: number,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.retryable = retryable;
     if (status !== undefined) this.status = status;
+    if (retryAfterMs !== undefined) this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -48,9 +56,29 @@ function mapHttpError(res: Response, baseMessage: string, code: string): ApiErro
     return new ApiError(`${baseMessage}: ${status} ${res.statusText}`, 'RATE_LIMIT', true, status);
   }
 
+  // 413 — request too large (неретраибельно)
+  if (status === 413) {
+    return new ApiError(
+      `${baseMessage}: ${status} ${res.statusText}`,
+      'REQUEST_TOO_LARGE',
+      false,
+      status,
+    );
+  }
+
+  // 529 — overloaded (ретраибельно)
+  if (status === 529) {
+    return new ApiError(`${baseMessage}: ${status} ${res.statusText}`, 'OVERLOADED', true, status);
+  }
+
   // 5xx — ретраибельно
   if (status >= 500) {
-    return new ApiError(`${baseMessage}: ${status} ${res.statusText}`, code, true, status);
+    return new ApiError(
+      `${baseMessage}: ${status} ${res.statusText}`,
+      'SERVER_ERROR',
+      true,
+      status,
+    );
   }
 
   // Остальные — как есть (обычно неретраибельно)
@@ -107,6 +135,29 @@ class LlmApiClient {
   // -----------------------------
   // Публичные методы
   // -----------------------------
+
+  /**
+   * Health pre-flight as per TRS §8. Uses healthTimeoutMs from config.
+   */
+  async getHealth(): Promise<{ ok: boolean }> {
+    try {
+      const url = `${this.baseUrl}/health`;
+      const res = await this.fetchWithTimeout(url, {}, appConfig.network.healthTimeoutMs);
+      if (!res.ok) throw mapHttpError(res, 'Health check failed', 'PROXY_DOWN');
+      return (await this.safeJson(res)) as { ok: boolean };
+    } catch (err: unknown) {
+      if (err instanceof ApiError) throw err;
+      if (isLikeNetworkError(err)) {
+        throw new ApiError('Network error during health check', 'NETWORK_ERROR', true);
+      }
+      if ((err as any)?.name === 'AbortError') throw err as any;
+      throw new ApiError(
+        `Unexpected health error: ${err instanceof Error ? err.message : String(err)}`,
+        'UNKNOWN_ERROR',
+        false,
+      );
+    }
+  }
 
   /**
    * Отправка батча на сервер.
@@ -171,15 +222,20 @@ class LlmApiClient {
       );
 
       if (res.status === 202 || res.status === 204) {
+        const ra = parseRetryAfter(res.headers.get('Retry-After')) ?? undefined;
         throw new ApiError(
           `Batch ${batchId} is still processing`,
           'BATCH_PROCESSING',
           true,
           res.status,
+          ra,
         );
       }
       if (res.status === 404) {
         throw new ApiError(`Batch ${batchId} not found`, 'BATCH_NOT_FOUND', false, 404);
+      }
+      if (res.status === 410) {
+        throw new ApiError(`Batch ${batchId} expired`, 'EXPIRED', false, 410);
       }
       if (!res.ok) {
         throw mapHttpError(res, 'Failed to get batch result', 'GET_FAILED');
@@ -262,14 +318,19 @@ class LlmApiClient {
   // Внутренние помощники
   // -----------------------------
 
-  private async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  private async fetchWithTimeout(
+    url: string,
+    options: RequestInit = {},
+    overrideTimeoutMs?: number,
+  ): Promise<Response> {
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), this.timeout);
+    const timeout = Math.max(100, overrideTimeoutMs ?? this.timeout);
+    const t = setTimeout(() => controller.abort(), timeout);
     try {
       return await fetch(url, { ...options, signal: controller.signal });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        throw new ApiError(`Request timeout after ${this.timeout}ms`, 'TIMEOUT', true);
+        throw new ApiError(`Request timeout after ${timeout}ms`, 'TIMEOUT', true);
       }
       throw err;
     } finally {
@@ -311,3 +372,12 @@ export const getErrorMessage = (error: unknown): string =>
 
 // Релевантные типы
 export type { BatchResultV1 };
+
+// Retry-After parsing helper (RFC 7231 seconds or HTTP date)
+export function parseRetryAfter(h?: string | null): number | null {
+  if (!h) return null;
+  const sec = Number(h);
+  if (Number.isFinite(sec)) return Math.max(0, sec * 1000);
+  const dt = Date.parse(h);
+  return Number.isFinite(dt) ? Math.max(0, dt - Date.now()) : null;
+}

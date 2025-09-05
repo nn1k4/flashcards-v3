@@ -9,5 +9,15 @@
   "ui.theme": "Theme",
   "theme.light": "Light",
   "theme.dark": "Dark",
-  "theme.system": "System"
+  "theme.system": "System",
+  "errors.network_down": "Network problem: unable to reach the service.",
+  "errors.proxy_down": "Proxy is unavailable. Please try again later.",
+  "errors.rate_limited": "Rate limited (429). Please retry after a short delay.",
+  "errors.request_too_large": "Request too large (413). Reduce input size.",
+  "errors.server_error": "Server error (5xx). Retrying shortly…",
+  "errors.overloaded": "Service overloaded (529). Retrying shortly…",
+  "errors.expired": "Batch has expired (≥29 days).",
+  "errors.batch_not_found": "Batch not found.",
+  "errors.timeout": "Request timed out.",
+  "errors.unknown": "Unexpected error occurred."
 }

@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import App from '../../app/App';
+import { ErrorBannersProvider } from '../../hooks/useErrorBanners';
 import { I18nProvider } from '../../stores/i18nStore';
 import { ThemeProvider } from '../../stores/themeStore';
 
@@ -9,7 +10,9 @@ describe('E2E smoke: language and theme switch', () => {
     const { getByText, getByLabelText } = render(
       <I18nProvider>
         <ThemeProvider>
-          <App />
+          <ErrorBannersProvider>
+            <App />
+          </ErrorBannersProvider>
         </ThemeProvider>
       </I18nProvider>,
     );

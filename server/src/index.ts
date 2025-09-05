@@ -75,6 +75,10 @@ function makeMockCard(lv: string, sid: number, sig: string) {
 
 // Healthcheck (удобно для smoke-тестов через прокси)
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
+// TRS §8: фронт вызывает /api/health (Vite proxy перезапишет на /health)
+app.get('/health', (_req, res) =>
+  res.json({ ok: true, service: 'flashcards-proxy', version: 'mock-1' }),
+);
 
 // POST /claude/batch — принять целый манифест и создать "задачу"
 app.post('/claude/batch', (req, res) => {

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 
 // API-клиент и ошибки
 import { apiClient, ApiError, isRetryableError } from '../api/client';
+import { config as appConfig } from '../config';
 
 // FSM: редьюсер состояния батча и селекторы
 import {
@@ -69,11 +70,7 @@ type UseBatchReturn = {
 // -----------------------------
 const SUBMIT_MAX_ATTEMPTS = 3;
 
-const POLL_MAX_ATTEMPTS = 120; // ~10 минут в среднем
-const POLL_BASE_DELAY = 1500; // мс
-const POLL_MAX_DELAY = 12000; // мс
-const POLL_BACKOFF = 1.7;
-const POLL_JITTER = 0.15;
+const POLL_MAX_ATTEMPTS = 10000; // effectively bounded by schedule/elapsed
 
 // -----------------------------
 // Вспомогательные утилиты
@@ -91,10 +88,16 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function nextDelay(prev: number): number {
-  const withBackoff = Math.min(POLL_MAX_DELAY, prev * POLL_BACKOFF);
-  const jitter = withBackoff * POLL_JITTER * (Math.random() * 2 - 1);
-  return Math.max(250, withBackoff + jitter);
+function pickAdaptiveDelay(elapsedMs: number): number {
+  const stages = appConfig.batch.polling.stages;
+  // pick the last stage whose fromSec <= elapsed
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  let stage = stages[0]!;
+  for (const s of stages) if (elapsedSec >= s.fromSec) stage = s;
+  const { minMs, maxMs } = stage;
+  const span = Math.max(0, maxMs - minMs);
+  const jitter = Math.random() * span;
+  return Math.max(100, minMs + jitter);
 }
 
 function shouldContinuePolling(err: unknown): boolean {
@@ -170,7 +173,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
   const doSubmitWithRetry = useCallback(
     async (m: Manifest, signal: AbortSignal): Promise<{ batchId: string }> => {
       let attempt = 0;
-      let delay = POLL_BASE_DELAY;
+      const start = Date.now();
       while (true) {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         attempt++;
@@ -178,8 +181,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
           return await apiClient.submitBatch(m);
         } catch (e) {
           if (attempt >= SUBMIT_MAX_ATTEMPTS || !isRetryableError(e)) throw e;
-          await sleep(delay, signal);
-          delay = nextDelay(delay);
+          await sleep(pickAdaptiveDelay(Date.now() - start), signal);
         }
       }
     },
@@ -189,7 +191,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
   const pollUntilReady = useCallback(
     async (batchId: string, signal: AbortSignal): Promise<BatchResultV1> => {
       let attempt = 0;
-      let delay = POLL_BASE_DELAY;
+      const start = Date.now();
 
       for (; attempt < POLL_MAX_ATTEMPTS; attempt++) {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -199,8 +201,17 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
           return data;
         } catch (e) {
           if (shouldContinuePolling(e)) {
-            await sleep(delay, signal);
-            delay = nextDelay(delay);
+            // Honor Retry-After if provided and allowed by config
+            let delayMs = pickAdaptiveDelay(Date.now() - start);
+            if (
+              appConfig.batch.polling.respectRetryAfter &&
+              e instanceof ApiError &&
+              typeof e.retryAfterMs === 'number' &&
+              e.retryAfterMs >= 0
+            ) {
+              delayMs = Math.max(100, e.retryAfterMs);
+            }
+            await sleep(delayMs, signal);
             continue;
           }
           throw e; // фатальная ошибка
@@ -268,6 +279,8 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     abortController.current = new AbortController();
 
     try {
+      // Pre-flight health (TRS §8)
+      await apiClient.getHealth();
       // INIT (извне редьюсера уже инициализировали, но для наглядности статус)
       dispatch({ type: 'SUBMIT_BATCH' } as any);
 

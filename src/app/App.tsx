@@ -1,6 +1,7 @@
 /** Главный каркас приложения.
  *  Далее сюда добавим TextInput/ProcessingView/ContentView по плану.
  */
+import ErrorBanners from '../components/Banners/ErrorBanners';
 import { useI18n } from '../stores/i18nStore';
 import { useTheme } from '../stores/themeStore';
 
@@ -10,6 +11,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
+      <ErrorBanners />
       <div className="p-6 rounded-xl shadow bg-white dark:bg-neutral-900 dark:text-neutral-50">
         <h1 className="text-2xl font-bold">{t('app.title')}</h1>
         <p className="text-sm opacity-80 mt-1">{t('app.subtitle')}</p>

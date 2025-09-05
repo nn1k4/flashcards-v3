@@ -4,7 +4,8 @@ import ru from '../locales/ru.json';
 import { getConfig } from './configStore';
 
 type Dict = Record<string, string>;
-const DICTS: Record<string, Dict> = { en, ru } as const;
+// Keep literal keys to enable precise Locale type
+const DICTS = { en: en as Dict, ru: ru as Dict } as const;
 
 export type Locale = keyof typeof DICTS;
 
@@ -15,7 +16,7 @@ export function resolveInitialLocale(): Locale {
 }
 
 export function t(locale: Locale, key: string): string {
-  const dict = DICTS[locale] ?? DICTS.en;
+  const dict: Dict = DICTS[locale] ?? DICTS.en;
   return dict[key] ?? key;
 }
 

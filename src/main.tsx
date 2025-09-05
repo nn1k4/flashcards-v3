@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app/App';
+import { ErrorBannersProvider } from './hooks/useErrorBanners';
 import './index.css';
 import { I18nProvider } from './stores/i18nStore';
 import { ThemeProvider } from './stores/themeStore';
@@ -20,7 +21,9 @@ ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <I18nProvider>
       <ThemeProvider>
-        <App />
+        <ErrorBannersProvider>
+          <App />
+        </ErrorBannersProvider>
       </ThemeProvider>
     </I18nProvider>
   </React.StrictMode>,
