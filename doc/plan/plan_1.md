@@ -137,6 +137,15 @@ OCR/PDF/Subtitles, Media follow-highlight, профили/подписки.
 - ESM-прокси, `/api/health`, единый формат ошибок, баннеры, адаптивный polling, уважение
   `Retry-After`.
 
+Status: ✅ Done (Acceptance met)
+
+- Health preflight `/api/health` перед запуском — реализовано.
+- Немедленные баннеры ошибок: 429, 413, 5xx, 529, сеть, proxy-down, expired (≥29 дней),
+  batch_not_found — локализованы.
+- Polling: интервалы из `config/batch.json` с jitter; `Retry-After` уважается.
+- Тесты: unit/RTL покрывают health, Retry-After, маппинг ошибок → баннеры, присутствие провайдера
+  ErrorBanners.
+
 ### S2 — Pipeline Core (Manifest/SID + Tool-use)
 
 - `latvian_sentence_tester:local` сегментация; Manifest.

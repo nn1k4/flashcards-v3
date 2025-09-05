@@ -28,6 +28,45 @@
 
 ---
 
+## Output Contract (для ответов Codex)
+
+Используйте структуру:
+
+- <analysis>: краткий разбор причин/контекста
+- <plan>: минимальные шаги
+- <changeset>: git unified diff только по затронутым файлам
+- <tests>: команды/покрытие тестами
+- <docs>: какие доки обновить
+- <commit>: conventional commit
+- <postchecks>: проверки (lint/type-check/tests)
+
+Пример (сокращённо):
+
+```
+1) <analysis> …
+2) <plan> …
+3) <changeset> …
+4) <tests> npm run test
+5) <docs> …
+6) <commit> feat(...): …
+7) <postchecks> npm run type-check && npm run lint -- --format codeframe
+```
+
+### Sync/branch & baseline checks (Windows)
+
+Перед началом работы локально (PowerShell):
+
+```
+git status
+git pull --rebase
+npm ci
+npm run type-check
+npm run test
+npm run lint -- --format codeframe
+```
+
+Это гарантирует зелёную базу (TS strict, тесты, линт) перед внесением изменений.
+
 ## 1) Tool-use & Prompt Caching (обязательно к исполнению)
 
 **Цель:** гарантировать JSON-структуру, снизить стоимость/латентность, корректно обрабатывать

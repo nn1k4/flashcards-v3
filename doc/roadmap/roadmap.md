@@ -53,7 +53,7 @@ title flashcards-v3 Roadmap (логическая последовательно
 dateFormat  YYYY-MM-DD
 section v1 (MVP)
 S0 Config & Lint           :done,   s0, 2025-08-20, 5d
-S1 Proxy & Errors          :        s1, after s0, 5d
+S1 Proxy & Errors          :done,   s1, after s0, 5d
 S2 Pipeline Core           :        s2, after s0, 6d
 S3 Flashcards v1           :        s3, after s2, 5d
 S4 Reading v1              :        s4, after s3, 6d
