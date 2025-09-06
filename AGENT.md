@@ -8,6 +8,13 @@
 
 Статус: S2 — ядро готово; tool-use отсутствует (LLMAdapter/BatchAdapter, emit_flashcards schema).
 
+Быстрые ссылки для реализации
+
+- `src/adapters/LLMAdapter.ts` — слой tool-use (single-tool, JSON-only, tool_choice fixed)
+- `src/adapters/BatchAdapter.ts` — обвязка для Message Batches parity
+- `src/types/tool_use.ts` — zod-схемы для `emit_flashcards.input`
+- `doc/best_practices/tool-use.md` — политика/контракты
+
 ## 0) Каноничные источники (читать по порядку)
 
 1. **TRS:** `doc/trs/trs_v_5.md` — источник истины по функционалу/нефункционалке/приёмке.

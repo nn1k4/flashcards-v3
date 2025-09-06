@@ -114,6 +114,8 @@ flashcards-v3/
 
 ⚠️ Tool-use (JSON-only, emit_flashcards) — в разработке; текущая сборка использует mock batch-proxy.
 
+Текущий статус см. в [doc/STATUS.md](doc/STATUS.md).
+
 - **Why:** tools guarantee **JSON-only** structures far better than textual prompts.
 - **Pattern:** each request provides `{ system, messages, tools, tool_choice }`. We **force** a
   single **flashcards emitter tool** via `tool_choice`.

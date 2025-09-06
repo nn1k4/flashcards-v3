@@ -3,6 +3,67 @@
 ⚠️ Реализация в коде на стадии планирования. Схемы и политика ниже — нормативные, но ещё не
 подключены.
 
+### Пример: emit_flashcards.input (нормативная схема)
+
+```ts
+import { z } from 'zod';
+
+/** Нормативная входная схема для emit_flashcards (tool_use.input). */
+export const ZEmitFlashcardsInput = z.object({
+  flashcards: z
+    .array(
+      z.object({
+        unit: z.enum(['word', 'phrase']).default('word'),
+        base_form: z.string(),
+        base_translation: z.string().optional(),
+        forms: z
+          .array(
+            z.object({
+              form: z.string(),
+              translation: z.string(),
+              type: z.string().default('token'),
+            }),
+          )
+          .default([]),
+        contexts: z
+          .array(
+            z.object({
+              lv: z.string(),
+              ru: z.string(),
+              sid: z.number().int().nonnegative().optional(),
+              sig: z.string().optional(),
+            }),
+          )
+          .min(1),
+        visible: z.boolean().default(true),
+      }),
+    )
+    .min(1),
+});
+
+/** Политика:
+ * - JSON-only tool_use.
+ * - tool_choice фиксирует emit_flashcards.
+ * - disable_parallel_tool_use: true.
+ * - Используется только первый tool_use с именем "emit_flashcards".
+ */
+```
+
+```json
+{
+  "flashcards": [
+    {
+      "unit": "word",
+      "base_form": "Sveiki",
+      "base_translation": "Здравствуйте",
+      "forms": [{ "form": "Sveiki", "translation": "Здравствуйте", "type": "token" }],
+      "contexts": [{ "lv": "Sveiki!", "ru": "Здравствуйте!", "sid": 0, "sig": "..." }],
+      "visible": true
+    }
+  ]
+}
+```
+
 ## 1) Цель и рамки в нашем проекте
 
 Мы используем **tools** в первую очередь как «JSON‑режим с гарантией схемы\*\*, без фактического
