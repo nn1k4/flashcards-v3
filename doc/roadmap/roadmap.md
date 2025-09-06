@@ -17,6 +17,9 @@ best-practices → `doc/best_practices/*` (включая `tool-use.md`,
   обрабатываем `stop_reason` (особенно `max_tokens`: bump/split-retry); prompt-caching для
   стабильных `system/tools`.
 
+Status: S2 активен; выполнено ~70–75% (hooks/FSM/aggregation/config/error‑UX/tests). Tool‑use слой
+не реализован (в очереди).
+
 ---
 
 ## 1) Свод по релизам
@@ -154,6 +157,7 @@ after s33, 2d
 - **Разнообразие субтитров** → tolerant-парсеры, нормализация, логи проблемных строк.
 - **Безопасность профилей/ключей (v2.0)** → шифрование AES-GCM, HttpOnly, audit-лог, минимум логов.
 - **i18n-долги** → линт на «сырые» строки, блок PR, словарный реестр.
+- **Блокер S2:** Tool‑use слой не реализован; блокирует end‑to‑end карточки от Claude.
 
 ---
 

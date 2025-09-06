@@ -139,6 +139,8 @@ OCR/PDF/Subtitles, Media follow-highlight, профили/подписки.
 
 Status: ✅ Done (Acceptance met)
 
+ℹ️ Сервер — mock (/claude/batch\*); production tool-use — не подключён.
+
 - Health preflight `/api/health` перед запуском — реализовано.
 - Немедленные баннеры ошибок: 429, 413, 5xx, 529, сеть, proxy-down, expired (≥29 дней),
   batch_not_found — локализованы.
@@ -153,7 +155,21 @@ Status: ✅ Done (Acceptance met)
   (`tool_use.input` + Zod), агрегация по SID.
 - LLMAdapter (single), BatchAdapter (create/status/result).
 
-Implementation summary — implemented, awaiting acceptance
+🚧 В процессе (~70–75%). Ядро готово; отсутствует tool-use слой (LLMAdapter/BatchAdapter,
+emit_flashcards schema).
+
+Status
+
+- ✅ FSM + селекторы/флаги; ✅ useBatch/useBatchPipeline; ✅ агрегация по SID; ✅ Retry-After; ✅
+  ErrorBanners; ✅ Zod DTO/Manifest; ✅ конфиги; ✅ тесты.
+- ❌ Tool-use adapters (LLMAdapter/BatchAdapter); ❌ Zod-схема emit_flashcards; ❌ парсер JSON-only
+  tool_use.
+
+TODO
+
+1. Ввести src/adapters/LLMAdapter + BatchAdapter (Batches parity).
+2. Zod-схема emit_flashcards (tool_use.input) и строгий парс первого tool_use.
+3. Интеграция с useBatch: custom_id==SID; стабильная агрегация.
 
 - FSM: finalized to `{ idle → submitted → in_progress → ready | failed }` with selectors
   `isIdle/isBusy/isDone/isFailed`.
