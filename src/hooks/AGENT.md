@@ -75,6 +75,17 @@ interface UseBatch {
 - 413 → немедленный отказ с советом (лимит конфигом).
 - История ID (с меткой **expired** ≥ 29 дней) — через `useBatchHistory()`.
 
+API reference (S2)
+
+- `useBatch(manifest)`: возвращает `fsmState`, `progress/sidCounts/processingTime`, флаги
+  `isProcessing/canStart/canCancel`, действия `startProcessing/cancelProcessing/reset/pollOnce`,
+  счётчики `submitAttempts/pollAttempts`.
+- `useBatchPipeline(maxSentencesPerChunk)`: добавляет `submit(text)`, `cancel()`, флаги
+  `isIdle/isBusy/isDone/isFailed`, `elapsedMs`.
+- Поллинг: использует `config.batch.polling.stages` (min/max + jitter) и уважает `Retry-After` при
+  `batch.polling.respectRetryAfter = true`; хардкоды таймингов запрещены.
+- Ошибки: неретраибельные ошибки поверх хуков отправляются в `ErrorBanners` через `pushFromError`.
+
 ### 2.4 `useBatchHistory()`
 
 CRUD истории `batch_id` (add/markExpired/remove/list). В UI: список + «Загрузить/Удалить».

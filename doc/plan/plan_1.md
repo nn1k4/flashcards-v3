@@ -153,6 +153,24 @@ Status: ✅ Done (Acceptance met)
   (`tool_use.input` + Zod), агрегация по SID.
 - LLMAdapter (single), BatchAdapter (create/status/result).
 
+Implementation summary — implemented, awaiting acceptance
+
+- FSM: finalized to `{ idle → submitted → in_progress → ready | failed }` with selectors
+  `isIdle/isBusy/isDone/isFailed`.
+- Polling: uses `config.batch.polling.stages` (min/max + jitter); honors `Retry-After` when
+  `batch.polling.respectRetryAfter = true`.
+- Public hooks: `useBatch(manifest)` and `useBatchPipeline(maxSentencesPerChunk)`; pipeline exposes
+  `submit(text)`, `cancel()`, `pollOnce()`, `submitAttempts`, `pollAttempts`, and derived `elapsed`
+  via selectors.
+- Error UX: non‑retryable failures push ErrorBanners immediately (no silent failures).
+- Tests: FSM transitions; Retry‑After precedence; RTL smoke for an error banner on failed polling.
+
+DoD evidence (tests updated/added)
+
+- `src/__tests__/hooks/fsm.transitions.test.ts`
+- `src/__tests__/hooks/polling.retryafter.integration.test.ts`
+- `src/__tests__/components/text-stub.errorbanner.test.tsx`
+
 ### S3 — Flashcards v1
 
 - Отрисовка карточек; контексты N/M; хоткеи; `h` hide; стили/flip (из конфигов); сброс flip при

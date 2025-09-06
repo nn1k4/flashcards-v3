@@ -180,6 +180,21 @@ RU/target по SID ← Каноникализация
 
 ---
 
+### Hooks contract (S2)
+
+Публичный API пайплайна:
+
+- `useBatch(manifest)`: отдаёт `fsmState`, `progress/sidCounts/processingTime`, флаги
+  `isProcessing/canStart/canCancel`, действия `startProcessing/cancelProcessing/reset/pollOnce`,
+  счётчики `submitAttempts/pollAttempts`.
+- `useBatchPipeline(maxSentencesPerChunk)`: добавляет `submit(text)` и `cancel()`, а также флаги
+  `isIdle/isBusy/isDone/isFailed` и `elapsedMs`.
+- Политика баннеров: при неретраибельных ошибках хук вызывает `pushFromError` (немедленный показ).
+
+Подробнее: `src/hooks/AGENT.md`.
+
+---
+
 ## 12) Как ИИ-агент вносит изменения
 
 1. Определи релиз/этап (см. `plan_X.md`). **Не** добавляй фичи будущих этапов без явного флага.

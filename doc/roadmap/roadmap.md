@@ -54,7 +54,7 @@ dateFormat  YYYY-MM-DD
 section v1 (MVP)
 S0 Config & Lint           :done,   s0, 2025-08-20, 5d
 S1 Proxy & Errors          :done,   s1, after s0, 5d
-S2 Pipeline Core           :        s2, after s0, 6d
+S2 Pipeline Core           :active, s2, after s0, 6d
 S3 Flashcards v1           :        s3, after s2, 5d
 S4 Reading v1              :        s4, after s3, 6d
 S5 Translation v1          :        s5, after s4, 3d
@@ -88,7 +88,11 @@ S30 Local NLP/MT           :        s30, after s29, 8d
 S31 YouTube Captions       :        s31, after s30, 4d
 S32 Security/Compliance    :        s32, after s31, 4d
 S33 Docs & Tests           :        s33, after s32, 3d
-S34 Polish & Release       :        s34, after s33, 2d
+```
+
+Status snapshot: S0, S1 ✅; S2 implemented & under review; next S3. S34 Polish & Release : s34,
+after s33, 2d
+
 ```
 
 > Даты условны; фактический календарь уточняется по состоянию репозитория и ресурсам.
@@ -188,3 +192,4 @@ S34 Polish & Release       :        s34, after s33, 2d
 
 > Все дополнения и изменения дорожной карты синхронизируются с TRS и соответствующим `plan_X.md`;
 > при конфликте приоритет у TRS v5.1 и official Anthropic docs.
+```

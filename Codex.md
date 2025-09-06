@@ -52,6 +52,17 @@
 7) <postchecks> npm run type-check && npm run lint -- --format codeframe
 ```
 
+### S2 Verification Checklist
+
+- Branch: `feat/s2-fsm-polling`
+- Commit example:
+  `feat(s2): finalize FSM, add polling hook API, error banners, and tests (plan_1 §S2, TRS §8/§4.3)`
+- Commands:
+  - `npm run validate:config`
+  - `npm run lint -- --format codeframe`
+  - `npm run type-check`
+  - `npm run test`
+
 ### Sync/branch & baseline checks (Windows)
 
 Перед началом работы локально (PowerShell):
