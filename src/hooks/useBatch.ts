@@ -329,8 +329,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       // S2: Error UX — немедленный баннер
       try {
         pushFromError(error);
-      } catch (_e) {
-        /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+      } catch {
         /* ignore */
       }
       throw error;
@@ -379,8 +378,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       dispatch({ type: 'BATCH_FAILED', payload: { error: (e as any)?.message ?? 'error' } } as any);
       try {
         pushFromError(e);
-      } catch (_e2) {
-        /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+      } catch {
         /* ignore */
       }
       throw e;
