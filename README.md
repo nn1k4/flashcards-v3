@@ -126,6 +126,9 @@ flashcards-v3/
 - **Prompt caching:** keep `system` and `tools` **stable** to leverage provider cache (best-effort).
   Changing `tool_choice` can invalidate cache blocks—plan for it.
 
+Routing uses apiBaseUrl=/api and llmRouteBase=/claude; timeouts: requestTimeoutMs=15000ms,
+healthTimeoutMs=3000ms (see config/network.json).
+
 **Cards schema (strict JSON):**
 
 ```ts

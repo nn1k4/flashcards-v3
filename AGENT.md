@@ -186,7 +186,13 @@ RU/target по SID ← Каноникализация
 - `src/hooks/*` — бизнес-логика (tooltip controller, batch polling, visibility policy).
 - `src/components/*` — UI (режимы, Import/Export, меню).
 - Proxy: `/api/health`; Vite mapping: `/api/* → <llmRouteBase>/*` (по умолчанию `/claude`).
-  Batch-маршруты: `/claude/batch{,/:batchId,/status}`.
+  Batch-маршруты: `/claude/batch{,/:batchId,/status}`. Сетевые значения (config/network.json):
+  `apiBaseUrl=/api`, `llmRouteBase=/claude`, `requestTimeoutMs=15000`, `healthTimeoutMs=3000`.
+  Маршруты клиента:
+  - Health: `<apiBaseUrl>/health`
+  - Batch: `POST <apiBaseUrl><llmRouteBase>/batch` `GET  <apiBaseUrl><llmRouteBase>/batch/:batchId`
+    `GET  <apiBaseUrl><llmRouteBase>/batch/:batchId/status`
+    `DELETE <apiBaseUrl><llmRouteBase>/batch/:batchId`
 
 ---
 

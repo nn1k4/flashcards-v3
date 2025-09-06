@@ -26,3 +26,5 @@
 - План S2: `doc/plan/plan_1.md`
 - Roadmap: `doc/roadmap/roadmap.md`
 - Политика tools: `doc/best_practices/tool-use.md`
+- Network: apiBaseUrl=/api, llmRouteBase=/claude; requestTimeoutMs=15000ms; healthTimeoutMs=3000ms.
+- Health endpoint: <apiBaseUrl>/health → backend /health (via Vite proxy).
