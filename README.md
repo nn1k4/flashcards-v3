@@ -133,23 +133,31 @@ healthTimeoutMs=3000ms (see config/network.json).
 
 ```ts
 type Unit = 'word' | 'phrase';
+
 interface FormEntry {
   form: string;
   translation: string;
+  type: string; // грамматический тип
 }
+
 interface Context {
-  latvian: string;
-  russian: string;
-  forms: FormEntry[];
+  lv: string;
+  ru: string;
+  sid?: number;
+  sig?: string;
 }
+
 interface Card {
-  unit: Unit;
+  unit: Unit; // default: 'word'
   base_form: string;
   base_translation?: string;
-  contexts: Context[];
-  visible: boolean;
+  forms: FormEntry[]; // <-- уровень карточки
+  contexts: Context[]; // <-- lv/ru (+ sid/sig опц.)
+  visible: boolean; // default: true
 }
-type Payload = Card[] | { flashcards: Card[] }; // tool-use → {flashcards}, else pure Card[]
+
+// tool-use: { flashcards: Card[] }, офлайн/импорт: Card[]
+type Payload = Card[] | { flashcards: Card[] };
 ```
 
 ---
