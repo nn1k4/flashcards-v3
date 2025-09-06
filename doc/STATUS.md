@@ -15,6 +15,8 @@
 - ✅ Тесты (FSM/Retry‑After/инварианты) — `src/__tests__/hooks/*`, `src/__tests__/property/*`,
   `src/__tests__/api/*`
 - ⚠️ Сервер — mock batch‑proxy — `server/src/index.ts`
+  - Server runtime: CommonJS (mock-proxy); ESM migration planned post-v1.0 (tech debt).
+  - Mock behavior: deterministic failures sid % 4 === 1 to test banners/retry.
 - ❌ Tool‑use adapters (LLMAdapter/BatchAdapter)
 - ❌ Zod‑схема `emit_flashcards`
 - ❌ Парсер JSON‑only `tool_use` (первый `emit_flashcards.input`)

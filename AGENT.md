@@ -185,7 +185,8 @@ RU/target по SID ← Каноникализация
 - `src/api/client.ts` — HTTP-клиент + Zod.
 - `src/hooks/*` — бизнес-логика (tooltip controller, batch polling, visibility policy).
 - `src/components/*` — UI (режимы, Import/Export, меню).
-- Proxy: `/api/health`, `/api/llm/single`, `/api/batch/{create,status,result}`.
+- Proxy: `/api/health`; Vite mapping: `/api/* → <llmRouteBase>/*` (по умолчанию `/claude`).
+  Batch-маршруты: `/claude/batch{,/:batchId,/status}`.
 
 ---
 

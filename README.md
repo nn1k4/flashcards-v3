@@ -56,7 +56,7 @@ flashcards-v3/
 │     └─ tool-use.md              # Tools: JSON-only, caching, stop reasons, parallel rules
 │
 ├─ config/                        # JSON/TS configs (validated by Zod/JSON Schema)
-├─ server/                        # Node ESM proxy (Express/Fastify)
+├─ server/                        # CommonJS mock-proxy (ts-node + nodemon)
 ├─ src/
 │  ├─ components/                 # UI only (no async/side-effects)
 │  ├─ hooks/                      # business logic, effects, network, FSM glue
