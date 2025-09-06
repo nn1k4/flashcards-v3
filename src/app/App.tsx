@@ -2,6 +2,7 @@
  *  Далее сюда добавим TextInput/ProcessingView/ContentView по плану.
  */
 import ErrorBanners from '../components/Banners/ErrorBanners';
+import TextStub from '../components/Text/TextStub';
 import { useI18n } from '../stores/i18nStore';
 import { useTheme } from '../stores/themeStore';
 
@@ -47,6 +48,8 @@ export default function App() {
             </select>
           </div>
         </div>
+        {/* Minimal Text stub for S2 pipeline tests */}
+        <TextStub />
       </div>
     </div>
   );

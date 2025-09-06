@@ -10,13 +10,7 @@ export type AppViewState = 'input' | 'processing' | 'ready';
 export type ViewMode = 'reading' | 'translation' | 'flashcards';
 
 // Состояния батч-процесса (FSM верхнего уровня)
-export type BatchState =
-  | 'idle'
-  | 'submitted'
-  | 'in_progress'
-  | 'partial_ready'
-  | 'ready'
-  | 'failed';
+export type BatchState = 'idle' | 'submitted' | 'in_progress' | 'ready' | 'failed';
 
 // Состояния отдельных предложений
 export type SidState = 'pending' | 'received' | 'invalid' | 'retrying' | 'skipped';

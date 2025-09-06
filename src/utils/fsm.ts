@@ -81,12 +81,11 @@ export function batchFSMReducer(state: BatchFSMState, event: FSMEvent): BatchFSM
       }
       const processed = new Set(state.processedChunks);
       processed.add(event.payload.chunkIndex);
-      // Если все чанки обработаны — можем перейти в partial_ready
-      const allChunks = processed.size === state.totalChunks;
       return {
         ...state,
         processedChunks: processed,
-        batchState: allChunks ? 'partial_ready' : state.batchState,
+        // S2: оставляем состояние без промежуточного partial_ready; завершаем только на BATCH_COMPLETED
+        batchState: state.batchState,
       };
     }
 
@@ -197,3 +196,14 @@ export function validateFSMState(state: BatchFSMState): void {
     throw new Error('FSM state validation failed: more chunks processed than total');
   }
 }
+
+/**
+ * Convenience selectors for UI/business logic (S2 acceptance):
+ * isIdle / isBusy / isDone / isFailed
+ */
+export const FSMFlags = {
+  isIdle: (s: BatchFSMState) => s.batchState === 'idle',
+  isBusy: (s: BatchFSMState) => s.batchState === 'submitted' || s.batchState === 'in_progress',
+  isDone: (s: BatchFSMState) => s.batchState === 'ready',
+  isFailed: (s: BatchFSMState) => s.batchState === 'failed',
+};

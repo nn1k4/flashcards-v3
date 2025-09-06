@@ -13,6 +13,7 @@ import { config as appConfig } from '../config';
 import {
   batchFSMReducer,
   createInitialBatchState,
+  FSMFlags,
   FSMSelectors,
   validateFSMState,
   type BatchFSMState,
@@ -29,7 +30,9 @@ import {
 import { buildLvTextFromManifest, validateManifest } from '../utils/manifest';
 
 // Повторные попытки / очередь ретраев
+import { buildManifest } from '../utils/manifest';
 import { RetryQueue } from '../utils/retry';
+import { useErrorBanners } from './useErrorBanners';
 
 // Контракты типов
 import type { ProcessingMetrics } from '../types/core';
@@ -63,6 +66,11 @@ type UseBatchReturn = {
   startProcessing: () => Promise<void>;
   cancelProcessing: () => Promise<void>;
   reset: () => void;
+
+  // S2 additions
+  pollOnce: () => Promise<boolean>;
+  submitAttempts: number;
+  pollAttempts: number;
 };
 
 // -----------------------------
@@ -88,7 +96,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function pickAdaptiveDelay(elapsedMs: number): number {
+export function pickAdaptiveDelay(elapsedMs: number): number {
   const stages = appConfig.batch.polling.stages;
   // pick the last stage whose fromSec <= elapsed
   const elapsedSec = Math.floor(elapsedMs / 1000);
@@ -116,6 +124,7 @@ function shouldContinuePolling(err: unknown): boolean {
 // Основной хук
 // -----------------------------
 export function useBatch(manifest: Manifest | null): UseBatchReturn {
+  const { pushFromError } = useErrorBanners();
   // --- FSM состояние батча ---
   const [fsmState, dispatch] = useReducer(
     batchFSMReducer,
@@ -124,6 +133,8 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
   // --- Актуальный результат для отображения ---
   const [batchResult, setBatchResult] = useState<BatchResultView | null>(null);
+  const [submitAttempts, setSubmitAttempts] = useState(0);
+  const [pollAttempts, setPollAttempts] = useState(0);
 
   // --- Очередь ретраев и контроллер отмены ---
   const retryQueue = useRef(new RetryQueue());
@@ -148,6 +159,8 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
     setBatchResult(null);
     retryQueue.current.clear();
+    setSubmitAttempts(0);
+    setPollAttempts(0);
 
     // Диагностика инвариантов «на холодную»
     try {
@@ -177,6 +190,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       while (true) {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         attempt++;
+        setSubmitAttempts(attempt);
         try {
           return await apiClient.submitBatch(m);
         } catch (e) {
@@ -211,6 +225,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
             ) {
               delayMs = Math.max(100, e.retryAfterMs);
             }
+            setPollAttempts((n) => n + 1);
             await sleep(delayMs, signal);
             continue;
           }
@@ -311,9 +326,16 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
         type: 'BATCH_FAILED',
         payload: { error: error instanceof Error ? error.message : String(error) },
       } as any);
+      // S2: Error UX — немедленный баннер
+      try {
+        pushFromError(error);
+      } catch (_e) {
+        /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+        /* ignore */
+      }
       throw error;
     }
-  }, [manifest, doSubmitWithRetry, pollUntilReady, processBatchResult, fsmState]);
+  }, [manifest, doSubmitWithRetry, pollUntilReady, processBatchResult, fsmState, pushFromError]);
 
   const cancelProcessing = useCallback(async () => {
     abortController.current?.abort();
@@ -327,6 +349,8 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     dispatch({ type: 'RESET' } as any);
     setBatchResult(null);
     retryQueue.current.clear();
+    setSubmitAttempts(0);
+    setPollAttempts(0);
   }, [manifest]);
 
   const reset = useCallback(() => {
@@ -335,23 +359,43 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     setBatchResult(null);
     retryQueue.current.clear();
     abortController.current = null;
+    setSubmitAttempts(0);
+    setPollAttempts(0);
   }, []);
+
+  // S2: explicit single poll attempt (no scheduling), returns true if ready
+  const pollOnce = useCallback(async (): Promise<boolean> => {
+    if (!manifest) throw new Error('Нет манифеста для обработки');
+    try {
+      const data = await apiClient.getBatchResult(manifest.batchId);
+      await processBatchResult(manifest, data);
+      dispatch({ type: 'BATCH_COMPLETED' } as any);
+      return true;
+    } catch (e) {
+      if (shouldContinuePolling(e)) {
+        setPollAttempts((n) => n + 1);
+        return false;
+      }
+      dispatch({ type: 'BATCH_FAILED', payload: { error: (e as any)?.message ?? 'error' } } as any);
+      try {
+        pushFromError(e);
+      } catch (_e2) {
+        /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+        /* ignore */
+      }
+      throw e;
+    }
+  }, [manifest, processBatchResult, pushFromError]);
 
   // --- Вычисляемые значения для UI ---
   const progress = useMemo(() => FSMSelectors.getProgress(fsmState), [fsmState]);
   const sidCounts = useMemo(() => FSMSelectors.getSidStateCounts(fsmState), [fsmState]);
   const processingTime = useMemo(() => FSMSelectors.getProcessingTime(fsmState) ?? 0, [fsmState]);
 
-  const isProcessing =
-    fsmState.batchState === 'in_progress' ||
-    fsmState.batchState === 'submitted' ||
-    fsmState.batchState === 'partial_ready';
+  const isProcessing = fsmState.batchState === 'in_progress' || fsmState.batchState === 'submitted';
   const canStart =
     !!manifest && (fsmState.batchState === 'idle' || fsmState.batchState === 'failed');
-  const canCancel =
-    fsmState.batchState === 'in_progress' ||
-    fsmState.batchState === 'submitted' ||
-    fsmState.batchState === 'partial_ready';
+  const canCancel = fsmState.batchState === 'in_progress' || fsmState.batchState === 'submitted';
 
   return {
     // состояние
@@ -372,6 +416,9 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     startProcessing,
     cancelProcessing,
     reset,
+    pollOnce,
+    submitAttempts,
+    pollAttempts,
   };
 }
 
@@ -381,4 +428,52 @@ function getChunksCount(manifest: Manifest): number {
   // Кол-во чанков: max(chunkIndex) + 1
   const maxIdx = manifest.items.reduce((acc, it) => Math.max(acc, it.chunkIndex), -1);
   return maxIdx + 1;
+}
+
+// -----------------------------
+// S2: Wrapper hook for Text → submit(text) → poll pipeline
+// -----------------------------
+export function useBatchPipeline(maxSentencesPerChunk: number = 20) {
+  const [manifest, setManifest] = useState<Manifest | null>(null);
+  const inner = useBatch(manifest);
+  const startedFor = useRef<string | null>(null);
+  const { cancelProcessing: innerCancel, startProcessing: innerStart, fsmState } = inner;
+
+  const submit = useCallback(
+    async (text: string) => {
+      const t = text?.trim() ?? '';
+      if (!t) throw new Error('Пустой текст');
+      const m = buildManifest(t, Math.max(1, Math.floor(maxSentencesPerChunk) || 1));
+      startedFor.current = null; // reset auto-start guard
+      setManifest(m);
+    },
+    [maxSentencesPerChunk],
+  );
+
+  const cancel = useCallback(async () => {
+    await innerCancel();
+  }, [innerCancel]);
+
+  // Auto-start when a new manifest is set and FSM is idle
+  useEffect(() => {
+    if (!manifest) return;
+    if (fsmState.batchState !== 'idle') return;
+    if (startedFor.current === manifest.batchId) return;
+    startedFor.current = manifest.batchId;
+    // fire and forget; errors will be pushed via banners inside the hook
+    innerStart().catch((_e) => {
+      /* ignore */
+    });
+  }, [manifest, fsmState.batchState, innerStart]);
+
+  return {
+    ...inner,
+    submit,
+    cancel,
+    isIdle: FSMFlags.isIdle(inner.fsmState),
+    isBusy: FSMFlags.isBusy(inner.fsmState),
+    isDone: FSMFlags.isDone(inner.fsmState),
+    isFailed: FSMFlags.isFailed(inner.fsmState),
+    elapsedMs: FSMSelectors.getProcessingTime(inner.fsmState) ?? 0,
+  };
 }
