@@ -256,3 +256,14 @@ RU/target по SID ← Каноникализация
 - README: `README.md`
 
 > При расхождениях между кодом и документами — укажи это в PR и предложи правку TRS/планов.
+
+### Сегментация (синхронизация внешнего модуля)
+
+- Источник улучшенного движка:
+  `/mnt/d/latvian_sentence_tester/project/client/src/utils/latvianSegmentation.ts`.
+- Локальная копия: `src/external/latvianSegmentation.ts` (используется, когда
+  `config/nlp.json → segmentation.engine = "latvian_sentence_tester:local"`).
+- Правило: при изменении исходника в внешнем проекте — копируй файл в этот репозиторий и запускай
+  тесты.
+- Точки использования: `src/utils/segmentation.ts` (switch), `src/utils/manifest.ts`
+  (`buildManifestWithEngine`).

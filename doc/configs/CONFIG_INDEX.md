@@ -13,6 +13,7 @@
 | translation | config/translation.json | src/types/config/translation.ts | 2025-08-23   | Frontend Eng |
 | edit        | config/edit.json        | src/types/config/edit.ts        | 2025-08-23   | Frontend Eng |
 | io          | config/io.json          | src/types/config/io.ts          | 2025-08-23   | Core Eng     |
+| nlp         | config/nlp.json         | src/types/config/nlp.ts         | 2025-09-27   | Core Eng     |
 
 Примечания:
 

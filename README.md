@@ -182,11 +182,23 @@ type Payload = Card[] | { flashcards: Card[] };
 
 ## 🔤 Segmentation (SID stability)
 
-- Engines: `primitive` (default), `latvian_sentence_tester:local`, `latvian_sentence_tester:http`
-  (fallback on 5xx/429/timeout).
+- Engines: `primitive` (default), `latvian_sentence_tester:local` (copied module),
+  `latvian_sentence_tester:http` (fallback on 5xx/429/timeout).
 - `SID = hash((docId||'')+':'+start+':'+end)` (engine-independent). Manifest is built **only** from
   the segmentation result.
 - Golden tests ensure identical `(start,end)` and SIDs on reruns.
+
+### Local engine source of truth
+
+- Advanced Latvian segmentation is developed in a separate repo:
+  `/mnt/d/latvian_sentence_tester/project/`.
+- File to copy: `/mnt/d/latvian_sentence_tester/project/client/src/utils/latvianSegmentation.ts` →
+  `src/external/latvianSegmentation.ts` in this project.
+- Config: set `config/nlp.json → segmentation.engine = "latvian_sentence_tester:local"` to enable
+  it.
+- Integration point: `src/utils/segmentation.ts` uses `splitIntoSentencesAdvanced()` when local
+  engine is active.
+- Keep this file in sync whenever upstream changes; future evolution may switch to an npm package.
 
 ---
 
