@@ -1,0 +1,9 @@
+{
+  "segmentation": {
+    "engine": "primitive",
+    "engines": {
+      "primitive": { "enabled": true },
+      "latvian_sentence_tester:local": { "enabled": false }
+    }
+  }
+}

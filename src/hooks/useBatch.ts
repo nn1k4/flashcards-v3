@@ -20,6 +20,7 @@ import {
 } from '../utils/fsm';
 
 // Утилиты агрегации (RU всегда по порядку SID из манифеста)
+import type { AggregatedBySid } from '../utils/aggregator';
 import {
   aggregateResultsBySid,
   buildRussianTextFromAggregation,
@@ -30,7 +31,7 @@ import {
 import { buildLvTextFromManifest, validateManifest } from '../utils/manifest';
 
 // Повторные попытки / очередь ретраев
-import { buildManifest } from '../utils/manifest';
+import { buildManifestWithEngine } from '../utils/manifest';
 import { RetryQueue } from '../utils/retry';
 import { useErrorBanners } from './useErrorBanners';
 
@@ -133,6 +134,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
   // --- Актуальный результат для отображения ---
   const [batchResult, setBatchResult] = useState<BatchResultView | null>(null);
+  const setAggregatedState = useState<AggregatedBySid | null>(null)[1];
   const [submitAttempts, setSubmitAttempts] = useState(0);
   const [pollAttempts, setPollAttempts] = useState(0);
 
@@ -239,6 +241,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
   const processBatchResult = useCallback(async (m: Manifest, batchData: BatchResultV1) => {
     const { data: aggregated, metrics } = aggregateResultsBySid(m, batchData);
+    setAggregatedState(aggregated);
 
     // Отметим полученные / ошибочные SID в FSM
     if (batchData.items?.length) {
@@ -272,15 +275,45 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     if (batchData.errors?.length) {
       await retryQueue.current.processQueue(
         m.batchId,
-        // retryOne: инжектируем простую «заглушку» — реальный split‑retry добавим при внедрении adapters
-        async (_sid: number, _lv: string) => {
-          // Здесь может быть: построение мини‑манифеста → submit → poll → возврат результатов по SID
-          // Пока — «no‑op» для сохранения последовательности сигналов.
-          return { ok: false };
+        async (sid: number, lv: string) => {
+          void lv;
+          const subManifest = buildSubManifestForSid(m, sid);
+          const { batchId: subId } = await doSubmitWithRetry(
+            subManifest,
+            abortController.current!.signal,
+          );
+          const subData = await pollUntilReady(subId, abortController.current!.signal);
+          return subData;
         },
-        (sid: number, _retryResult: unknown) => {
-          // В этой версии только отмечаем получение; слияние retry-данных можно добавить позже
-          dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
+        (sid: number, retryResult: unknown) => {
+          try {
+            const sub = retryResult as BatchResultV1;
+            const { data: subAgg } = aggregateResultsBySid(m, sub);
+            setAggregatedState((prev) => {
+              const base: AggregatedBySid = prev ? new Map(prev) : new Map();
+              subAgg.forEach((bucket, s) => {
+                if (!base.has(s)) base.set(s, { ru: [], cards: [], warnings: [] });
+                const b = base.get(s)!;
+                if (bucket.ru.length) b.ru.push(...bucket.ru);
+                if (bucket.cards.length) b.cards.push(...bucket.cards);
+                if (bucket.warnings.length) b.warnings.push(...bucket.warnings);
+              });
+              const lvText2 = buildLvTextFromManifest(m, true);
+              const ruText2 = buildRussianTextFromAggregation(m, base, true);
+              const cards2 = extractAllFlashcards(base);
+              const metrics2 = computeMetricsFromAggregated(m, base);
+              setBatchResult({
+                lvText: lvText2,
+                ruText: ruText2,
+                cards: cards2,
+                metrics: metrics2,
+              });
+              dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
+              return base;
+            });
+          } catch (e) {
+            console.warn('retry merge failed:', e);
+          }
         },
         (sid: number, error: Error) => {
           dispatch({ type: 'SID_FAILED', payload: { sid, error: error.message } } as any);
@@ -455,7 +488,8 @@ export function useBatchPipeline(maxSentencesPerChunk?: number) {
             : (appConfig.batch.chunking?.maxSentencesPerChunk ?? 20)) as number,
         ) || 1,
       );
-      const m = buildManifest(t, effMax);
+      const engine = appConfig.nlp?.segmentation?.engine ?? 'primitive';
+      const m = buildManifestWithEngine(t, effMax, engine as any);
       startedFor.current = null; // reset auto-start guard
       setManifest(m);
     },
@@ -488,4 +522,36 @@ export function useBatchPipeline(maxSentencesPerChunk?: number) {
     isFailed: FSMFlags.isFailed(inner.fsmState),
     elapsedMs: FSMSelectors.getProcessingTime(inner.fsmState) ?? 0,
   };
+}
+
+// --- Helpers ---
+
+function buildSubManifestForSid(manifest: Manifest, sid: number): Manifest {
+  const it = manifest.items.find((x) => x.sid === sid) ?? manifest.items[sid]!;
+  return {
+    batchId: `${manifest.batchId}-r-${sid}-${Date.now()}`,
+    source: it.lv,
+    items: [{ sid: it.sid, lv: it.lv, sig: it.sig, chunkIndex: 0 }],
+    createdAt: new Date().toISOString(),
+    version: manifest.version,
+  };
+}
+
+function computeMetricsFromAggregated(
+  m: Manifest,
+  ag: Map<number, { ru: string[]; cards: Flashcard[]; warnings: string[] }>,
+): ProcessingMetrics {
+  let received = 0;
+  ag.forEach((b) => {
+    if (b.ru.length || b.cards.length) received++;
+  });
+  return {
+    totalSids: m.items.length,
+    receivedSids: received,
+    missingSids: Math.max(0, m.items.length - received),
+    invalidSigs: 0,
+    duplicateRussian: 0,
+    emptyRussian: 0,
+    schemaViolations: 0,
+  } as ProcessingMetrics;
 }

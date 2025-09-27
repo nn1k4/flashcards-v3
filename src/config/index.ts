@@ -7,6 +7,7 @@ import i18nJson from '../../config/i18n.json';
 import ioJson from '../../config/io.json';
 import llmJson from '../../config/llm.json';
 import networkJson from '../../config/network.json';
+import nlpJson from '../../config/nlp.json';
 import readingJson from '../../config/reading.json';
 import themeJson from '../../config/theme.json';
 import translationJson from '../../config/translation.json';
@@ -19,6 +20,7 @@ import { ZI18nConfig, type I18nConfig } from '../types/config/i18n';
 import { ZIoConfig, type IoConfig } from '../types/config/io';
 import { ZLlmConfig, type LlmConfig } from '../types/config/llm';
 import { ZNetworkConfig, type NetworkConfig } from '../types/config/network';
+import { ZNlpConfig, type NlpConfig } from '../types/config/nlp';
 import { ZReadingConfig, type ReadingConfig } from '../types/config/reading';
 import { ZThemeConfig, type ThemeConfig } from '../types/config/theme';
 import { ZTranslationConfig, type TranslationConfig } from '../types/config/translation';
@@ -35,6 +37,7 @@ export type AllConfigs = {
   translation: TranslationConfig;
   edit: EditConfig;
   io: IoConfig;
+  nlp: NlpConfig;
 };
 
 export function validateAllConfigs(raw?: Partial<AllConfigs>): AllConfigs {
@@ -61,7 +64,8 @@ export function validateAllConfigs(raw?: Partial<AllConfigs>): AllConfigs {
   const translation = ZTranslationConfig.parse(raw?.translation ?? translationJson);
   const edit = ZEditConfig.parse(raw?.edit ?? editJson);
   const io = ZIoConfig.parse(raw?.io ?? ioJson);
-  return { app, i18n, theme, network, llm, batch, flashcards, reading, translation, edit, io };
+  const nlp = ZNlpConfig.parse((raw as any)?.nlp ?? (nlpJson as any));
+  return { app, i18n, theme, network, llm, batch, flashcards, reading, translation, edit, io, nlp };
 }
 
 export const config: AllConfigs = validateAllConfigs();

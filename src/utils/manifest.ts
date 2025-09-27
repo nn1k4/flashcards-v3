@@ -4,6 +4,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Manifest, ManifestInvariants, ManifestItem } from '../types/manifest';
 import { ZManifest } from '../types/manifest';
+import { segmentText, type SegmenterEngine } from './segmentation';
 import {
   createSignature,
   normalizeText,
@@ -51,6 +52,41 @@ export function buildManifest(sourceText: string, maxSentencesPerChunk: number =
   // Финальная валидация манифеста
   validateManifest(manifest);
 
+  return manifest;
+}
+
+/**
+ * Вариант с явным выбором движка сегментации (primitive | latvian_sentence_tester:local).
+ * Поведение по умолчанию — как в buildManifest (primitive).
+ */
+export function buildManifestWithEngine(
+  sourceText: string,
+  maxSentencesPerChunk: number = 20,
+  engine: SegmenterEngine = 'primitive',
+): Manifest {
+  const batchId = uuidv4();
+  const sentences = segmentText(sourceText, engine);
+  validateSplitterInvariant(sourceText, sentences);
+
+  let chunkIndex = 0;
+  let inChunk = 0;
+  const items: ManifestItem[] = sentences.map((lv, sid) => {
+    if (inChunk >= maxSentencesPerChunk) {
+      chunkIndex++;
+      inChunk = 0;
+    }
+    inChunk++;
+    return { sid, lv, sig: createSignature(lv, sid), chunkIndex };
+  });
+
+  const manifest: Manifest = {
+    batchId,
+    source: sourceText,
+    items,
+    createdAt: new Date().toISOString(),
+    version: '1.0',
+  };
+  validateManifest(manifest);
   return manifest;
 }
 

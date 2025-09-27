@@ -7,6 +7,7 @@ import { ZI18nConfig } from '../../types/config/i18n';
 import { ZIoConfig } from '../../types/config/io';
 import { ZLlmConfig } from '../../types/config/llm';
 import { ZNetworkConfig } from '../../types/config/network';
+import { ZNlpConfig } from '../../types/config/nlp';
 import { ZReadingConfig } from '../../types/config/reading';
 import { ZThemeConfig } from '../../types/config/theme';
 import { ZTranslationConfig } from '../../types/config/translation';
@@ -21,6 +22,7 @@ describe('Zod config schemas', () => {
         supportedLocales: ['en'],
       }),
     ).not.toThrow();
+    expect(() => ZNlpConfig.parse({ segmentation: { engine: 'primitive' } })).not.toThrow();
     expect(() => ZI18nConfig.parse({ defaultLocale: 'en', locales: ['en', 'ru'] })).not.toThrow();
     expect(() =>
       ZThemeConfig.parse({ default: 'system', darkClass: 'dark', tokens: {} }),
