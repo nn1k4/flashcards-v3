@@ -17,8 +17,10 @@ best-practices → `doc/best_practices/*` (включая `tool-use.md`,
   обрабатываем `stop_reason` (особенно `max_tokens`: bump/split-retry); prompt-caching для
   стабильных `system/tools`.
 
-Status: S2 активен; выполнено ~70–75% (hooks/FSM/aggregation/config/error‑UX/tests). Tool‑use слой
-не реализован (в очереди).
+Status: S2 активен; выполнено ~50–55% (hooks/FSM/aggregation/config/error‑UX/tests). Tool‑use слой
+не реализован (в очереди). Принят план: схемы emit_flashcards, адаптеры LLM/Batch,
+useLLMToolsEmitter, RetryQueue split‑retry, чанкование из конфигов, сегментация: primitive→local
+интерфейс.
 
 ---
 

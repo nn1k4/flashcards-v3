@@ -1,7 +1,14 @@
 # STATUS — flashcards-v3 (snapshot)
 
-- S2 ≈ 70–75%: hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use отсутствует.
-- Ближайшие шаги: (1) adapters, (2) Zod emit_flashcards, (3) интеграция с useBatch.
+- S2 ≈ 50–55%: hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use слой отсутствует
+  (адаптеры/схемы/парсер). Сегментация — primitive (latvian_sentence_tester:local — в очереди).
+- Ближайшие шаги (План доработок S2 — принят 2025-09-27):
+  1. Zod‑схема `emit_flashcards` (tool_use.input) + строгий парсер первого `tool_use` нужного имени;
+  2. Адаптеры `LLMAdapter` (single/tools JSON‑only) и `BatchAdapter` (Message Batches parity);
+  3. Хук `useLLMToolsEmitter` (обёртка над LLMAdapter; stop reasons, в т.ч. `max_tokens`);
+  4. Реализация `RetryQueue`: split‑retry проблемных SID + merge результатов;
+  5. Чанкование из конфигов (вынести maxSentencesPerChunk из кода);
+  6. Сегментация: задел `latvian_sentence_tester:local` (интерфейс/флаг), по умолчанию — primitive.
 
 Чек‑лист
 
@@ -20,6 +27,9 @@
 - ❌ Tool‑use adapters (LLMAdapter/BatchAdapter)
 - ❌ Zod‑схема `emit_flashcards`
 - ❌ Парсер JSON‑only `tool_use` (первый `emit_flashcards.input`)
+- ⚠️ RetryQueue — заглушка (нет split‑retry/merge)
+- ⚠️ Чанкование — задаётся аргументом hook; нужно вынести в конфиг
+- ⚠️ Сегментация — сейчас `primitive`; `latvian_sentence_tester:local` — pending
 
 Ссылки
 
