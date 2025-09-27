@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 // API-клиент и ошибки
+import { BatchAdapter } from '../adapters/BatchAdapter';
 import { apiClient, ApiError, isRetryableError } from '../api/client';
 import { config as appConfig } from '../config';
 
@@ -187,6 +188,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
   // -----------------------------
   const doSubmitWithRetry = useCallback(
     async (m: Manifest, signal: AbortSignal): Promise<{ batchId: string }> => {
+      const adapter = new BatchAdapter();
       let attempt = 0;
       const start = Date.now();
       while (true) {
@@ -194,7 +196,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
         attempt++;
         setSubmitAttempts(attempt);
         try {
-          return await apiClient.submitBatch(m);
+          return await adapter.submit(m);
         } catch (e) {
           if (attempt >= SUBMIT_MAX_ATTEMPTS || !isRetryableError(e)) throw e;
           await sleep(pickAdaptiveDelay(Date.now() - start), signal);
@@ -206,6 +208,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
   const pollUntilReady = useCallback(
     async (batchId: string, signal: AbortSignal): Promise<BatchResultV1> => {
+      const adapter = new BatchAdapter();
       let attempt = 0;
       const start = Date.now();
 
@@ -213,7 +216,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         try {
           // если готово — вернётся без ошибок
-          const data = await apiClient.getBatchResult(batchId);
+          const data = await adapter.result(batchId);
           return data;
         } catch (e) {
           if (shouldContinuePolling(e)) {
@@ -379,7 +382,8 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     abortController.current?.abort();
     if (manifest) {
       try {
-        await apiClient.cancelBatch(manifest.batchId);
+        const adapter = new BatchAdapter();
+        await adapter.cancel(manifest.batchId);
       } catch (e) {
         console.warn('Cancel batch failed:', e);
       }
