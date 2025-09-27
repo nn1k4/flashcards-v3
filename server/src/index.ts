@@ -80,6 +80,117 @@ app.get('/health', (_req, res) =>
   res.json({ ok: true, service: 'flashcards-proxy', version: 'mock-1' }),
 );
 
+// -------------------------------
+// NEW: Single (tools JSON-only, mock) — возвращает tool_use блока emit_flashcards
+// -------------------------------
+/**
+ * POST /claude/single
+ * Body: { text?: string, manifest?: Manifest }
+ * Response (mock): { content: [{type:'tool_use', name:'emit_flashcards', input:{ flashcards: [...] }}], stop_reason:'tool_use' }
+ */
+app.post('/claude/single', (req, res) => {
+  const rawText: string | undefined = typeof req.body?.text === 'string' ? req.body.text : undefined;
+  const manifestParse = req.body?.manifest ? ZManifest.safeParse(req.body.manifest) : null;
+
+  let baseText = rawText?.trim();
+  if (!baseText && manifestParse?.success) {
+    baseText = manifestParse.data.items.map((i) => i.lv).join(' ');
+  }
+  if (!baseText) return res.status(400).json({ error: 'No text or manifest provided' });
+
+  // Простая генерация одной карточки на основе всего текста
+  const card = makeMockCard(baseText, 0, 'sig-0');
+  const payload = { flashcards: [card] };
+  return res.json({
+    content: [
+      {
+        type: 'tool_use',
+        name: 'emit_flashcards',
+        input: payload,
+      },
+    ],
+    stop_reason: 'tool_use',
+  });
+});
+
+// -------------------------------
+// NEW: Batch JSONL builder (tools/tool_choice mock)
+// -------------------------------
+/**
+ * POST /claude/batch/build-jsonl
+ * Body: { manifest: Manifest, model?: string }
+ * Response: { lines: string[] } — каждый элемент это строка .jsonl с { custom_id, params }
+ */
+app.post('/claude/batch/build-jsonl', (req, res) => {
+  const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);
+  if (!parse.success) return res.status(400).json({ error: 'Invalid manifest', details: parse.error.flatten() });
+
+  const manifest = parse.data;
+  const model = typeof req.body?.model === 'string' && req.body.model.trim() ? req.body.model : 'claude-3-haiku-20240307';
+
+  // Определение инструмента (минимально для mock)
+  const tools = [
+    {
+      name: 'emit_flashcards',
+      description:
+        'Return strictly structured JSON of flashcards (LV/RU) without any prose. This is a virtual tool for JSON-only output.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          flashcards: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['unit', 'base_form', 'contexts', 'visible'],
+              properties: {
+                unit: { type: 'string', enum: ['word', 'phrase'] },
+                base_form: { type: 'string' },
+                base_translation: { type: 'string' },
+                contexts: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['lv', 'ru'],
+                    properties: {
+                      lv: { type: 'string' },
+                      ru: { type: 'string' },
+                      sid: { type: 'number' },
+                      sig: { type: 'string' },
+                    },
+                  },
+                },
+                visible: { type: 'boolean' },
+              },
+            },
+          },
+        },
+        required: ['flashcards'],
+        additionalProperties: false,
+      },
+    },
+  ];
+
+  const system = {
+    type: 'text',
+    text: 'You must always respond via the emit_flashcards tool with strict JSON input. No prose.',
+  } as const;
+
+  const lines = manifest.items.map((it) => {
+    const params = {
+      model,
+      system,
+      messages: [{ role: 'user', content: [{ type: 'text', text: it.lv }] }],
+      tools,
+      tool_choice: { type: 'tool', name: 'emit_flashcards' },
+      disable_parallel_tool_use: true,
+      max_tokens: 1000,
+    };
+    return JSON.stringify({ custom_id: it.sid, params });
+  });
+
+  return res.json({ lines });
+});
+
 // POST /claude/batch — принять целый манифест и создать "задачу"
 app.post('/claude/batch', (req, res) => {
   const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);

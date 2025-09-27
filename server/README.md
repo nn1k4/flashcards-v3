@@ -5,8 +5,13 @@
   v1.0.
 - Маршруты:
   - Health: `GET /health`
+  - Single (tools mock): `POST /claude/single` — возвращает `tool_use` блока `emit_flashcards` с
+    JSON‑payload (строгий JSON‑only mock)
   - Batch: `POST /claude/batch`, `GET /claude/batch/:batchId`, `GET /claude/batch/:batchId/status`,
     `DELETE /claude/batch/:batchId`
+  - Batch JSONL builder: `POST /claude/batch/build-jsonl` — принимает `manifest` и возвращает массив
+    строк `.jsonl` (каждая с `{ custom_id, params }`), где `params` содержит `tools` и
+    `tool_choice` для JSON‑only tool‑use.
   - Vite dev proxy: `/api/* → <llmRouteBase>/*` (по умолчанию `<llmRouteBase> = /claude`).
 - Поведение mock: детерминированные ошибки для `sid % 4 === 1` — удобны для тестов баннеров/ретраев.
 
@@ -26,3 +31,6 @@ npm run dev
 - Проверить импорт пути/расширения (`type: module`, `moduleResolution`), заменить
   `require`/`__dirname` паттерны.
 - Smoke‑тесты маршрутов и прокси‑карты (`/api/* → <llmRouteBase>/*`).
+
+Примечание: текущая реализация `single/builder` — mock для фронтенд‑разработки и тестов; реальную
+интеграцию с провайдером LLM добавим отдельным коммитом, сохраняя JSON‑only контракт и `tool_choice`.
