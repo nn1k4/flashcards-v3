@@ -1,8 +1,9 @@
 # STATUS — flashcards-v3 (snapshot)
 
-- S2 ≈ 50–55%: hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use слой отсутствует
-  (адаптеры/схемы/парсер). Сегментация — primitive (latvian_sentence_tester:local — в очереди).
-- Ближайшие шаги (План доработок S2 — принят 2025-09-27):
+- S2 ≈ 75–80%: hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use интегрирован в ретраи
+  (LLMAdapter/useLLMToolsEmitter + proxy), добавлен single‑flow (TextStub). Сегментация —
+  переключаемая (primitive | latvian_sentence_tester:local).
+- Ближайшие шаги (План доработок S2 — обновлён 2025-09-27):
   1. Zod‑схема `emit_flashcards` (tool_use.input) + строгий парсер первого `tool_use` нужного имени;
   2. Адаптеры `LLMAdapter` (single/tools JSON‑only) и `BatchAdapter` (Message Batches parity);
   3. Хук `useLLMToolsEmitter` (обёртка над LLMAdapter; stop reasons, в т.ч. `max_tokens`);
@@ -24,12 +25,14 @@
 - ⚠️ Сервер — mock batch‑proxy — `server/src/index.ts`
   - Server runtime: CommonJS (mock-proxy); ESM migration planned post-v1.0 (tech debt).
   - Mock behavior: deterministic failures sid % 4 === 1 to test banners/retry.
-- ❌ Tool‑use adapters (LLMAdapter/BatchAdapter)
-- ❌ Zod‑схема `emit_flashcards`
-- ❌ Парсер JSON‑only `tool_use` (первый `emit_flashcards.input`)
-- ⚠️ RetryQueue — заглушка (нет split‑retry/merge)
-- ⚠️ Чанкование — задаётся аргументом hook; нужно вынести в конфиг
-- ⚠️ Сегментация — сейчас `primitive`; `latvian_sentence_tester:local` — pending
+- ✅ Tool‑use adapters (LLMAdapter/BatchAdapter) — скелеты + интеграция (retry/single) через proxy
+- ✅ Zod‑схема `emit_flashcards`
+- ✅ Парсер JSON‑only `tool_use` (через LLMAdapter/useLLMToolsEmitter)
+- ✅ RetryQueue — split‑retry/merge реализован
+- ✅ Чанкование — из конфигов (batch.chunking)
+- ✅ Сегментация — переключаемая, локальный модуль скопирован (см. `doc/configs/nlp.md`)
+- ⚠️ Batch/tool‑use полный путь (builder→submit JSONL с tools) — pending (mock готов)
+- ⚠️ E2E smoke для tool‑use → UI — pending
 
 Ссылки
 

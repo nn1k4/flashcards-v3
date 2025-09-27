@@ -155,8 +155,8 @@ Status: ✅ Done (Acceptance met)
   (`tool_use.input` + Zod), агрегация по SID.
 - LLMAdapter (single), BatchAdapter (create/status/result).
 
-🚧 В процессе (~50–55%). Ядро готово; отсутствует tool-use слой (LLMAdapter/BatchAdapter,
-emit_flashcards schema).
+🚧 В процессе (~75–80%). Ядро готово; tool-use интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter
+через proxy), добавлен single‑flow (TextStub), bump policy для `max_tokens` (unit‑test).
 
 Status
 
@@ -167,13 +167,9 @@ Status
 
 TODO
 
-1. Ввести src/adapters/LLMAdapter + BatchAdapter (Batches parity).
-2. Zod-схема emit_flashcards (tool_use.input) и строгий парс первого tool_use.
-3. Интеграция с useBatch: custom_id==SID; стабильная агрегация.
-4. Хук useLLMToolsEmitter (single/tools; stop reasons, в т.ч. max_tokens).
-5. Реализация RetryQueue: split-retry проблемных SID + merge результатов.
-6. Чанкование из конфигов (вынести maxSentencesPerChunk из кода).
-7. Сегментация: задел latvian_sentence_tester:local (интерфейс/флаг); по умолчанию — primitive.
+1. Полный batch/tool‑use путь: builder→submit JSONL с tools; агрегирование по SID — в прод.
+2. E2E smoke сценарий: tool‑use → Zod → агрегатор → UI.
+3. Док‑обновления приёмки TRS для tool‑use single/batch.
 
 - FSM: finalized to `{ idle → submitted → in_progress → ready | failed }` with selectors
   `isIdle/isBusy/isDone/isFailed`.
