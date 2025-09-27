@@ -59,14 +59,27 @@ export class RetryQueue {
     this.q = [];
   }
 
+  /**
+   * Обрабатывает очередь ретраев «split‑retry»: для каждого SID вызывает `retryOne`.
+   *
+   * Замечания:
+   * - Функция `retryOne` инжектируется снаружи (адаптер/оркестратор) — это облегчает тестирование
+   *   и не требует сетевых вызовов в этом модуле.
+   * - Ошибка отдельного SID не прерывает очередь.
+   */
   async processQueue(
-    _batchId: string,
+    batchId: string,
+    retryOne: (sid: number, lv: string, batchId: string) => Promise<unknown>,
     onSuccess: (sid: number, result: unknown) => void,
     onFailure: (sid: number, error: Error) => void,
   ): Promise<void> {
-    void onSuccess;
     for (const item of this.q) {
-      onFailure(item.sid, item.error);
+      try {
+        const result = await retryOne(item.sid, item.lv, batchId);
+        onSuccess(item.sid, result);
+      } catch (e) {
+        onFailure(item.sid, (e as Error) ?? item.error);
+      }
     }
     this.clear();
   }

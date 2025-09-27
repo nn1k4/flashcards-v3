@@ -7,5 +7,6 @@
       { "fromSec": 600, "minMs": 30000, "maxMs": 60000 }
     ],
     "respectRetryAfter": true
-  }
+  },
+  "chunking": { "maxSentencesPerChunk": 20 }
 }

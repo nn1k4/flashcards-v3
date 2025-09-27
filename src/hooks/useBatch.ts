@@ -272,6 +272,12 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     if (batchData.errors?.length) {
       await retryQueue.current.processQueue(
         m.batchId,
+        // retryOne: инжектируем простую «заглушку» — реальный split‑retry добавим при внедрении adapters
+        async (_sid: number, _lv: string) => {
+          // Здесь может быть: построение мини‑манифеста → submit → poll → возврат результатов по SID
+          // Пока — «no‑op» для сохранения последовательности сигналов.
+          return { ok: false };
+        },
         (sid: number, _retryResult: unknown) => {
           // В этой версии только отмечаем получение; слияние retry-данных можно добавить позже
           dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
@@ -431,7 +437,7 @@ function getChunksCount(manifest: Manifest): number {
 // -----------------------------
 // S2: Wrapper hook for Text → submit(text) → poll pipeline
 // -----------------------------
-export function useBatchPipeline(maxSentencesPerChunk: number = 20) {
+export function useBatchPipeline(maxSentencesPerChunk?: number) {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const inner = useBatch(manifest);
   const startedFor = useRef<string | null>(null);
@@ -441,7 +447,15 @@ export function useBatchPipeline(maxSentencesPerChunk: number = 20) {
     async (text: string) => {
       const t = text?.trim() ?? '';
       if (!t) throw new Error('Пустой текст');
-      const m = buildManifest(t, Math.max(1, Math.floor(maxSentencesPerChunk) || 1));
+      const effMax = Math.max(
+        1,
+        Math.floor(
+          (typeof maxSentencesPerChunk === 'number'
+            ? maxSentencesPerChunk
+            : (appConfig.batch.chunking?.maxSentencesPerChunk ?? 20)) as number,
+        ) || 1,
+      );
+      const m = buildManifest(t, effMax);
       startedFor.current = null; // reset auto-start guard
       setManifest(m);
     },

@@ -13,5 +13,10 @@ export const ZBatchConfig = z.object({
       .min(1),
     respectRetryAfter: z.boolean().default(true),
   }),
+  chunking: z
+    .object({
+      maxSentencesPerChunk: z.number().int().positive(),
+    })
+    .default({ maxSentencesPerChunk: 20 }),
 });
 export type BatchConfig = z.infer<typeof ZBatchConfig>;
