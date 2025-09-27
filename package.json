@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "concurrently -n client,server -c blue,magenta \"npm run dev\" \"npm --prefix server run dev\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc -p tsconfig.json --noEmit",
@@ -21,7 +22,9 @@
     "prepare": "husky",
     "lint-staged:run": "lint-staged",
     "lint:anti-hardcode": "node scripts/lint-anti-hardcode.mjs",
-    "e2e": "vitest run src/__tests__/e2e/theme-i18n.smoke.test.tsx"
+    "e2e": "vitest run src/__tests__/e2e/theme-i18n.smoke.test.tsx",
+    "e2e:pw": "playwright test",
+    "e2e:pw:ui": "playwright test --ui"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -41,6 +44,8 @@
     "zod": "^4.0.17"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "concurrently": "^9.0.1",
     "@eslint/js": "^9.33.0",
     "@tailwindcss/vite": "^4.1.12",
     "@testing-library/jest-dom": "^6.7.0",
