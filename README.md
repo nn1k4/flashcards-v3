@@ -260,6 +260,17 @@ type Payload = Card[] | { flashcards: Card[] };
   import/export/restore; tool-use/stop-reasons UX.
 - **Lint:** ESLint + Prettier/Biome; formatter output: **codeframe**.
 
+### E2E (Playwright)
+
+- Commands:
+  - `npm run e2e:pw` — headless run (starts client+server via `dev:full`).
+  - `npm run e2e:pw:ui` — interactive UI runner.
+- Artifacts (auto-ignored by git):
+  - `test-results/` — traces/screenshots/videos per test.
+  - `playwright-report/` — HTML report.
+- Local dev server for E2E:
+  - `npm run dev:full` — runs Vite client and mock server concurrently.
+
 Useful scripts:
 
 ```bash
