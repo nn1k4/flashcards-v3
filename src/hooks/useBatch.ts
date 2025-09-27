@@ -34,6 +34,8 @@ import { buildLvTextFromManifest, validateManifest } from '../utils/manifest';
 // Повторные попытки / очередь ретраев
 import { buildManifestWithEngine } from '../utils/manifest';
 import { RetryQueue } from '../utils/retry';
+import { LLMAdapter } from '../adapters/LLMAdapter';
+import { callMessagesViaProxy } from '../api/tools';
 import { useErrorBanners } from './useErrorBanners';
 
 // Контракты типов
@@ -278,20 +280,30 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     if (batchData.errors?.length) {
       await retryQueue.current.processQueue(
         m.batchId,
-        async (sid: number, lv: string) => {
-          void lv;
-          const subManifest = buildSubManifestForSid(m, sid);
-          const { batchId: subId } = await doSubmitWithRetry(
-            subManifest,
-            abortController.current!.signal,
-          );
-          const subData = await pollUntilReady(subId, abortController.current!.signal);
-          return subData;
+        async (_sid: number, lv: string) => {
+          const adapter = new LLMAdapter({ callMessages: callMessagesViaProxy });
+          const req = {
+            model: appConfig.llm.defaultModel,
+            system: { type: 'text', text: 'Return strictly structured JSON via emit_flashcards tool.' },
+            messages: [{ role: 'user', content: [{ type: 'text', text: lv }] }],
+            tools: [],
+            tool_choice: { type: 'tool', name: 'emit_flashcards' },
+            disable_parallel_tool_use: true,
+            max_tokens: appConfig.llm.maxTokensDefault,
+          } as const;
+          const out = await adapter.invokeEmitFlashcards(req as any);
+          if (!out.ok) throw new Error(out.stopReason || 'tool-use failed');
+          return out.data; // { flashcards: [...] }
         },
-        (sid: number, retryResult: unknown) => {
+        (_sid: number, retryResult: unknown) => {
           try {
-            const sub = retryResult as BatchResultV1;
-            const { data: subAgg } = aggregateResultsBySid(m, sub);
+            const sub = retryResult as { flashcards: Flashcard[] };
+            const subAgg: AggregatedBySid = new Map();
+            subAgg.set(_sid, {
+              ru: (sub.flashcards?.[0]?.contexts?.[0]?.ru?.trim() ? [sub.flashcards[0]!.contexts[0]!.ru!] : []),
+              cards: sub.flashcards ?? [],
+              warnings: [],
+            });
             setAggregatedState((prev) => {
               const base: AggregatedBySid = prev ? new Map(prev) : new Map();
               subAgg.forEach((bucket, s) => {
@@ -305,13 +317,8 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
               const ruText2 = buildRussianTextFromAggregation(m, base, true);
               const cards2 = extractAllFlashcards(base);
               const metrics2 = computeMetricsFromAggregated(m, base);
-              setBatchResult({
-                lvText: lvText2,
-                ruText: ruText2,
-                cards: cards2,
-                metrics: metrics2,
-              });
-              dispatch({ type: 'SID_RECEIVED', payload: { sid } } as any);
+              setBatchResult({ lvText: lvText2, ruText: ruText2, cards: cards2, metrics: metrics2 });
+              dispatch({ type: 'SID_RECEIVED', payload: { sid: _sid } } as any);
               return base;
             });
           } catch (e) {
@@ -530,16 +537,7 @@ export function useBatchPipeline(maxSentencesPerChunk?: number) {
 
 // --- Helpers ---
 
-function buildSubManifestForSid(manifest: Manifest, sid: number): Manifest {
-  const it = manifest.items.find((x) => x.sid === sid) ?? manifest.items[sid]!;
-  return {
-    batchId: `${manifest.batchId}-r-${sid}-${Date.now()}`,
-    source: it.lv,
-    items: [{ sid: it.sid, lv: it.lv, sig: it.sig, chunkIndex: 0 }],
-    createdAt: new Date().toISOString(),
-    version: manifest.version,
-  };
-}
+// buildSubManifestForSid — использовалось в batch‑ретраях; при tool‑use ретраях не требуется.
 
 function computeMetricsFromAggregated(
   m: Manifest,

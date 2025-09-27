@@ -98,8 +98,14 @@ app.post('/claude/single', (req, res) => {
   }
   if (!baseText) return res.status(400).json({ error: 'No text or manifest provided' });
 
-  // Простая генерация одной карточки на основе всего текста
-  const card = makeMockCard(baseText, 0, 'sig-0');
+  // Простая генерация одной карточки на основе входа
+  let sid = 0;
+  let sig = 'sig-0';
+  if (manifestParse?.success && manifestParse.data.items.length === 1) {
+    sid = manifestParse.data.items[0]!.sid;
+    sig = manifestParse.data.items[0]!.sig;
+  }
+  const card = makeMockCard(baseText, sid, sig);
   const payload = { flashcards: [card] };
   return res.json({
     content: [
