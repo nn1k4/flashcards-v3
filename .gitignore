@@ -13,6 +13,7 @@ server/dist/
 .vite/
 .vitest/
 coverage/
+/.tooling/
 *.tsbuildinfo
 .eslintcache
 .stylelintcache
