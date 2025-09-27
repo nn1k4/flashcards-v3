@@ -274,3 +274,12 @@ RU/target по SID ← Каноникализация
   тесты.
 - Точки использования: `src/utils/segmentation.ts` (switch), `src/utils/manifest.ts`
   (`buildManifestWithEngine`).
+
+### Завершение сессии (если пользователь просит «закончить сессию»)
+
+- Создай новый файл отчёта `doc/chats/[X].md`, где X = последний номер + 1.
+- В отчёте кратко, но исчерпывающе опиши: что сделано, какие модули/тесты добавлены, проблемы и
+  решения, текущий статус (STATUS/roadmap), и TODO на следующую сессию.
+- Обнови `doc/STATUS.md` и `doc/roadmap/roadmap.md` фактическим прогрессом и пометками «что дальше».
+- Сразу исключай из git новые каталоги артефактов (см. Git hygiene): `test-results/`,
+  `playwright-report/`, `coverage/`, `traces/`, `screenshots/` и т.п.
