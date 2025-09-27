@@ -36,6 +36,7 @@ import { buildManifestWithEngine } from '../utils/manifest';
 import { RetryQueue } from '../utils/retry';
 import { LLMAdapter } from '../adapters/LLMAdapter';
 import { callMessagesViaProxy } from '../api/tools';
+import { invokeWithMaxTokensBump } from '../utils/tooluse';
 import { useErrorBanners } from './useErrorBanners';
 
 // Контракты типов
@@ -291,7 +292,11 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
             disable_parallel_tool_use: true,
             max_tokens: appConfig.llm.maxTokensDefault,
           } as const;
-          const out = await adapter.invokeEmitFlashcards(req as any);
+          const out = await invokeWithMaxTokensBump(
+            (r) => adapter.invokeEmitFlashcards(r as any),
+            req as any,
+            { attempts: 2 },
+          );
           if (!out.ok) throw new Error(out.stopReason || 'tool-use failed');
           return out.data; // { flashcards: [...] }
         },
