@@ -61,6 +61,10 @@
      /mnt/d/flashcards3/project/doc/configs/reading.md,
      /mnt/d/flashcards3/project/doc/configs/theme.md,
      /mnt/d/flashcards3/project/doc/configs/translation.md </documentation_study_sequence>
+	 
+7. **Накопленный опыт из последних рабочих сессий работы над проектом** 
+	/mnt/d/flashcards3/project/doc/chats/[X].md - прочти все файлы в этом каталоге чтобы вспомпить все, что мы делали и какой опыт был накоплен за время всех сессий. Файл содержащий максимальную номерацию в названии является наиболее недавним.
+	
 
 ### Принципы изучения:
 
