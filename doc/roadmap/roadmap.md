@@ -53,45 +53,54 @@ Status: S2 активен; выполнено ~75–80% (hooks/FSM/aggregation/c
 
 ```mermaid
 gantt
-title flashcards-v3 Roadmap (логическая последовательность)
+title flashcards-v3 Roadmap (синхронизировано с plan_1…plan_5)
 dateFormat  YYYY-MM-DD
-section v1 (MVP)
-S0 Config & Lint           :done,   s0, 2025-08-20, 5d
-S1 Proxy & Errors          :done,   s1, after s0, 5d
-S2 Pipeline Core           :active, s2, after s0, 6d
-S3 Flashcards v1           :        s3, after s2, 5d
-S4 Reading v1              :        s4, after s3, 6d
-S5 Translation v1          :        s5, after s4, 3d
-S6 Edit v1                 :        s6, after s5, 5d
-S7 Import/Export JSON      :        s7, after s5, 4d
-S8 QA Package              :        s8, after s6, 4d
-section v1.1
-S9 JSONL Import            :        s9,  after s8, 4d
-S10 Restore/Undo           :        s10, after s8, 4d
-S11 Context Menu           :        s11, after s8, 4d
-S12 Reveal-on-Peek         :        s12, after s11, 3d
-S13 Docs & Polish          :        s13, after s9,  3d
-section v1.2
-S16 Ingestion Infra        :        s16, after s13, 4d
-S17 PDF+OCR                :        s17, after s16, 5d
-S18 Images/Clipboard       :        s18, after s16, 4d
-S19 Subtitles              :        s19, after s18, 4d
-S20 UX & Integration       :        s20, after s19, 3d
-S21 Docs & Polish          :        s21, after s20, 2d
-section v1.3
-S22 Media Core             :        s22, after s21, 4d
-S23 Anchors/Follow         :        s23, after s22, 4d
-S24 Controls/UX            :        s24, after s23, 3d
-S25 Anki/Quizlet Export    :        s25, after s23, 3d
-S26 Docs & Polish          :        s26, after s25, 2d
-section v2.0
-S27 Auth/Profiles          :        s27, after s26, 6d
-S28 Keys/Providers         :        s28, after s27, 4d
-S29 Billing/Entitlements   :        s29, after s28, 5d
-S30 Local NLP/MT           :        s30, after s29, 8d
-S31 YouTube Captions       :        s31, after s30, 4d
-S32 Security/Compliance    :        s32, after s31, 4d
-S33 Docs & Tests           :        s33, after s32, 3d
+
+section Этап 1 (MVP)
+S0 Подготовка                 :done,   s0,  2025-08-20, 5d
+S1 Proxy & Health & Ошибки    :done,   s1,  after s0,   5d
+S2 Pipeline Core              :active, s2,  after s0,   6d
+S3 Flashcards v1              :        s3,  after s2,   5d
+S4 Reading v1                 :        s4,  after s3,   6d
+S5 Translation v1             :        s5,  after s4,   3d
+S6 Edit v1                    :        s6,  after s5,   5d
+S7 Import/Export JSON         :        s7,  after s6,   4d
+S8 Stop-reasons (минимум)     :        s8,  after s6,   3d
+S9 QA-пак                     :        s9,  after s7 s8, 4d
+
+section Этап 2
+S10 JSONL Import              :        s10, after s9,   4d
+S11 Restore/Undo              :        s11, after s9,   4d
+S12 Reading Context Menu      :        s12, after s9,   4d
+S13 Reveal-on-Peek            :        s13, after s12,  3d
+S14 Stop-reasons UX           :        s14, after s12,  3d
+S15 Docs & Polish             :        s15, after s14,  2d
+
+section Этап 3
+S16 Каркас и конфиги          :        s16, after s15,  4d
+S17 PDF + OCR fallback        :        s17, after s16,  5d
+S18 Images/Clipboard → OCR    :        s18, after s16,  4d
+S19 Subtitles (SRT/VTT/ASS)   :        s19, after s18,  4d
+S20 UI/UX диалог + интеграция :        s20, after s19,  3d
+S21 Docs & Polish             :        s21, after s20,  2d
+
+section Этап 4
+S22 Media Core                :        s22, after s21,  4d
+S23 Anchors & Follow-Highlight:        s23, after s22,  4d
+S24 Управление и интеграция   :        s24, after s23,  3d
+S25 Экспорт Anki/Quizlet      :        s25, after s23,  3d
+S26 Docs & Polish             :        s26, after s25,  2d
+
+section Этап 5
+S27 Auth & Profiles           :        s27, after s26,  6d
+S28 Keys Vault & Proxy        :        s28, after s27,  4d
+S29 Billing & Entitlements    :        s29, after s28,  5d
+S30 Local NLP/MT              :        s30, after s29,  8d
+S31 YouTube Captions          :        s31, after s30,  4d
+S32 Security & Compliance     :        s32, after s31,  4d
+S33 Docs & Tests              :        s33, after s32,  3d
+S34 Polish & Release          :        s34, after s33,  2d
+
 ```
 
 Status snapshot: S0, S1 ✅; S2 implemented & under review; next S3. S34 Polish & Release : s34,
