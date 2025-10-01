@@ -1,8 +1,10 @@
 # STATUS — flashcards-v3 (snapshot)
 
-- S2 ≈ 80–85% (updated 2025-10-01): hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use
+- S2 ≈ 90–95% (updated 2025-10-01): hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use
   интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter + proxy), добавлен single‑flow (TextStub).
-  Сегментация — переключаемая (primitive | latvian_sentence_tester:local).
+  Сегментация — переключаемая (primitive | latvian_sentence_tester:local). Включён провайдер:
+  `/claude/provider/single` и `/claude/provider/batch*` на сервере + клиентские маршруты по флагу
+  `llm.useProvider`.
 - Ближайшие шаги (План доработок S2 — обновлён 2025-09-27):
   1. Zod‑схема `emit_flashcards` (tool_use.input) + строгий парсер первого `tool_use` нужного имени;
   2. Адаптеры `LLMAdapter` (single/tools JSON‑only) и `BatchAdapter` (Message Batches parity);
@@ -31,8 +33,11 @@
 - ✅ RetryQueue — split‑retry/merge реализован
 - ✅ Чанкование — из конфигов (batch.chunking)
 - ✅ Сегментация — переключаемая, локальный модуль скопирован (см. `doc/configs/nlp.md`)
-- ⚠️ Batch/tool‑use полный путь (builder→submit JSONL с tools) — pending (mock готов)
-- ⚠️ E2E smoke для tool‑use → UI — pending
+- ✅ Provider single/tool‑use — включаемо флагом `llm.useProvider`; mock single/batch сохранены.
+- ✅ Provider batch submit/result/status — сервер реализует `/claude/provider/batch*`; клиент
+  учитывает флаг.
+- ⚠️ Соответствие Message Batches (официальный API) — на следующем этапе (пока сервер управляет
+  батчем сам).
 
 Ссылки
 
