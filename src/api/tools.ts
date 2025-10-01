@@ -25,7 +25,17 @@ export async function callMessagesViaProxy(req: MessagesRequest): Promise<Messag
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   });
-  if (!res.ok) throw new Error(`Proxy single failed: ${res.status}`);
+  if (!res.ok) {
+    // Try to extract provider/server error message for user-friendly display
+    const txt = await res.text();
+    try {
+      const j = JSON.parse(txt);
+      const msg = j?.error?.message || j?.error || j?.message || txt || `HTTP ${res.status}`;
+      throw new Error(`Provider error ${res.status}: ${msg}`);
+    } catch {
+      throw new Error(`Provider error ${res.status}: ${txt || res.statusText}`);
+    }
+  }
   const json = (await res.json()) as MessagesResponse;
   return json;
 }

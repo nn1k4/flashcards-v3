@@ -19,5 +19,7 @@
   "errors.expired": "Пакет истёк (≥29 дней).",
   "errors.batch_not_found": "Пакет не найден.",
   "errors.timeout": "Превышено время ожидания.",
-  "errors.unknown": "Произошла непредвиденная ошибка."
+  "errors.unknown": "Произошла непредвиденная ошибка.",
+  "errors.provider_disabled": "Провайдер отключён (не задан API‑ключ).",
+  "errors.provider_auth": "Ошибка аутентификации провайдера. Проверьте API‑ключ."
 }

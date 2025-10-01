@@ -17,9 +17,11 @@ best-practices → `doc/best_practices/*` (включая `tool-use.md`,
   обрабатываем `stop_reason` (особенно `max_tokens`: bump/split-retry); prompt-caching для
   стабильных `system/tools`.
 
-Status: S2 активен; выполнено ~75–80% (hooks/FSM/aggregation/config/error‑UX/tests). Tool‑use:
-интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter + proxy), добавлен single‑flow; batch/tool‑use
-полный путь — в очереди (mock builder готов). Принят план: завершить прод‑путь и E2E.
+Status (2025‑10‑01): S2 активен; выполнено ~90–95% (hooks/FSM/aggregation/config/error‑UX/tests;
+provider single/batch + клиентские маршруты по флагу `llm.useProvider`). Tool‑use интегрирован в
+ретраи (LLMAdapter/useLLMToolsEmitter + proxy), есть single‑flow. Сервер поддерживает
+`/claude/provider/single` и `/claude/provider/batch*`; mock builder и mock batch сохранены для
+offline. Осталось: официальные Message Batches (перенос на следующий шаг).
 
 ---
 

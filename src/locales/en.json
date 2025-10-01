@@ -19,5 +19,7 @@
   "errors.expired": "Batch has expired (≥29 days).",
   "errors.batch_not_found": "Batch not found.",
   "errors.timeout": "Request timed out.",
-  "errors.unknown": "Unexpected error occurred."
+  "errors.unknown": "Unexpected error occurred.",
+  "errors.provider_disabled": "Provider integration is disabled (missing API key).",
+  "errors.provider_auth": "Provider authentication failed. Check API key."
 }

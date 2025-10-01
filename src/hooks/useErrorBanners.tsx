@@ -102,6 +102,9 @@ function mapErrorToBanner(err: unknown): { key: string; details?: string } {
   }
   // Fallback by status
   const s = e.status ?? 0;
+  // Provider-specific helpful messages
+  if (s === 501) return { key: 'errors.provider_disabled' };
+  if (s === 401 || s === 403) return { key: 'errors.provider_auth' };
   if (s === 429) return { key: 'errors.rate_limited' };
   if (s === 413) return { key: 'errors.request_too_large' };
   if (s === 529) return { key: 'errors.overloaded' };
