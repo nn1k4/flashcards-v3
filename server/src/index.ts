@@ -24,6 +24,10 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_API_URL = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = process.env.ANTHROPIC_VERSION || '2023-06-01';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307';
 
 // -------------------------------
 // Утилиты
@@ -121,15 +125,132 @@ app.post('/claude/single', (req, res) => {
 });
 
 // -------------------------------
-// Provider stubs (feature-flagged): return 501 unless real integration is enabled later
+// Provider endpoints (feature-flagged via env). If no ANTHROPIC_API_KEY → 501.
 // -------------------------------
-app.post('/claude/provider/single', (_req, res) => {
-  // Placeholder: future pass-through to provider SDK/API
-  res.status(501).json({ error: 'provider integration disabled' });
+app.post('/claude/provider/single', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
+
+  try {
+    // Accept { text?: string, manifest?: Manifest, model?: string, max_tokens?: number }
+    const rawText: string | undefined =
+      typeof req.body?.text === 'string' ? req.body.text : undefined;
+    const manifestParse = req.body?.manifest ? ZManifest.safeParse(req.body.manifest) : null;
+    let baseText = rawText?.trim();
+    if (!baseText && manifestParse?.success)
+      baseText = manifestParse.data.items.map((i) => i.lv).join(' ');
+    if (!baseText) return res.status(400).json({ error: 'No text or manifest provided' });
+
+    const model: string =
+      (typeof req.body?.model === 'string' && req.body.model) || ANTHROPIC_MODEL;
+    const maxTokens: number = Number(req.body?.max_tokens) > 0 ? Number(req.body.max_tokens) : 1024;
+
+    // Minimal tool definition aligned with client expectations
+    const toolDef = {
+      name: 'emit_flashcards',
+      description:
+        'Return a strictly structured JSON object with flashcards (no free text outside fields).',
+      input_schema: {
+        type: 'object',
+        properties: {
+          flashcards: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                unit: { type: 'string', enum: ['word', 'phrase'] },
+                base_form: { type: 'string' },
+                base_translation: { type: 'string' },
+                contexts: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      lv: { type: 'string' },
+                      ru: { type: 'string' },
+                      sid: { type: 'number' },
+                      sig: { type: 'string' },
+                    },
+                    required: ['lv', 'ru'],
+                  },
+                  minItems: 1,
+                },
+                visible: { type: 'boolean' },
+              },
+              required: ['base_form', 'contexts'],
+            },
+          },
+        },
+        required: ['flashcards'],
+        additionalProperties: true,
+      },
+    } as const;
+
+    const body = {
+      model,
+      max_tokens: maxTokens,
+      system: [{ type: 'text', text: 'Return strictly structured JSON via emit_flashcards tool.' }],
+      messages: [{ role: 'user', content: [{ type: 'text', text: baseText }] }],
+      tools: [toolDef],
+      tool_choice: { type: 'tool', name: 'emit_flashcards' },
+      disable_parallel_tool_use: true,
+    } as const;
+
+    const r = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await r.text();
+    if (!r.ok) return res.status(r.status).type('application/json').send(text);
+    // Forward provider content as-is; client expects { content, stop_reason }
+    return res.type('application/json').send(text);
+  } catch (e) {
+    return res.status(500).json({ error: (e as Error).message || 'provider error' });
+  }
 });
 
-app.post('/claude/provider/batch/build-jsonl', (_req, res) => {
-  res.status(501).json({ error: 'provider integration disabled' });
+app.post('/claude/provider/batch/build-jsonl', (req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
+
+  // Reuse the same builder logic as mock, but behind provider path and model override
+  const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);
+  if (!parse.success)
+    return res.status(400).json({ error: 'Invalid manifest', details: parse.error.flatten() });
+  const manifest = parse.data;
+  const model = (typeof req.body?.model === 'string' && req.body.model) || ANTHROPIC_MODEL;
+
+  const lines = manifest.items.map((it) => {
+    const system = 'Return strictly structured JSON via emit_flashcards tool.';
+    const tools = [
+      {
+        name: 'emit_flashcards',
+        description:
+          'Return a strictly structured JSON object with flashcards (no free text outside fields).',
+        input_schema: {
+          type: 'object',
+          properties: { flashcards: { type: 'array' } },
+          required: ['flashcards'],
+        },
+      },
+    ];
+    const messages = [{ role: 'user', content: [{ type: 'text', text: it.lv }] }];
+    const params = {
+      model,
+      system,
+      tools,
+      tool_choice: { type: 'tool', name: 'emit_flashcards' },
+      disable_parallel_tool_use: true,
+      messages,
+      max_tokens: 1000,
+    };
+    return JSON.stringify({ custom_id: it.sid, params });
+  });
+
+  return res.json({ lines });
 });
 
 // -------------------------------
