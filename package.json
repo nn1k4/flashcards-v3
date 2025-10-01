@@ -24,7 +24,8 @@
     "lint:anti-hardcode": "node scripts/lint-anti-hardcode.mjs",
     "e2e": "vitest run src/__tests__/e2e/theme-i18n.smoke.test.tsx",
     "e2e:pw": "playwright test",
-    "e2e:pw:ui": "playwright test --ui"
+    "e2e:pw:ui": "playwright test --ui",
+    "smoke:provider": "node scripts/smoke-provider.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [

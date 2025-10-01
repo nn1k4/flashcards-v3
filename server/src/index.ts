@@ -1,7 +1,11 @@
 import cors from 'cors';
 import { randomUUID } from 'crypto';
+import dotenv from 'dotenv';
 import express from 'express';
+import path from 'node:path';
 import { ZBatchResultV1, ZManifest, type BatchResultV1, type Manifest } from './schemas';
+// Load .env (server/.env) before reading any env vars
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // -------------------------------
 // In-memory "очередь" задач
@@ -167,22 +171,41 @@ app.post('/claude/provider/single', async (req, res) => {
     const toolDef = {
       name: 'emit_flashcards',
       description:
-        'Return a strictly structured JSON object with flashcards (no free text outside fields).',
+        'Emit a strictly structured JSON object with flashcards for the given Latvian text. No free text outside fields. Provide at least one flashcard with at least one context including lv and ru.',
       input_schema: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           flashcards: {
             type: 'array',
+            minItems: 1,
             items: {
               type: 'object',
+              additionalProperties: false,
               properties: {
                 unit: { type: 'string', enum: ['word', 'phrase'] },
                 base_form: { type: 'string' },
                 base_translation: { type: 'string' },
-                contexts: {
+                forms: {
                   type: 'array',
                   items: {
                     type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      form: { type: 'string' },
+                      translation: { type: 'string' },
+                      type: { type: 'string' },
+                    },
+                    required: ['form', 'translation'],
+                  },
+                  default: [],
+                },
+                contexts: {
+                  type: 'array',
+                  minItems: 1,
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
                     properties: {
                       lv: { type: 'string' },
                       ru: { type: 'string' },
@@ -191,27 +214,26 @@ app.post('/claude/provider/single', async (req, res) => {
                     },
                     required: ['lv', 'ru'],
                   },
-                  minItems: 1,
                 },
                 visible: { type: 'boolean' },
               },
-              required: ['base_form', 'contexts'],
+              required: ['unit', 'base_form', 'contexts', 'visible'],
             },
           },
         },
         required: ['flashcards'],
-        additionalProperties: true,
       },
     } as const;
 
     const body = {
       model,
       max_tokens: maxTokens,
-      system: [{ type: 'text', text: 'Return strictly structured JSON via emit_flashcards tool.' }],
+      system:
+        'You are a JSON-only tool emitter. Use the emit_flashcards tool to return a non-empty flashcards array for the given Latvian text. Each flashcard must include base_form, unit, visible=true, and at least one context with lv and ru. No prose. If unsure, still emit at least one reasonable flashcard.',
       messages: [{ role: 'user', content: [{ type: 'text', text: baseText }] }],
       tools: [toolDef],
       tool_choice: { type: 'tool', name: 'emit_flashcards' },
-      disable_parallel_tool_use: true,
+      // Note: do not send disable_parallel_tool_use — provider rejects unknown fields
     } as const;
 
     const r = await fetchWithTimeout(ANTHROPIC_API_URL, {
@@ -262,7 +284,6 @@ app.post('/claude/provider/batch/build-jsonl', (req, res) => {
       system,
       tools,
       tool_choice: { type: 'tool', name: 'emit_flashcards' },
-      disable_parallel_tool_use: true,
       messages,
       max_tokens: 1000,
     };
@@ -271,6 +292,172 @@ app.post('/claude/provider/batch/build-jsonl', (req, res) => {
 
   return res.json({ lines });
 });
+
+// POST /claude/provider/batch — submit a provider-backed batch job
+app.post('/claude/provider/batch', (req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
+
+  const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);
+  if (!parse.success)
+    return res.status(400).json({ error: 'Invalid manifest', details: parse.error.flatten() });
+  const manifest = parse.data;
+  const batchId = manifest.batchId || randomUUID();
+
+  jobs.set(batchId, { status: 'processing', manifest, createdAt: Date.now() });
+
+  // Process asynchronously
+  (async () => {
+    const started = Date.now();
+    const items: BatchResultV1['items'] = [];
+    const errors: NonNullable<BatchResultV1['errors']> = [];
+
+    for (const it of manifest.items) {
+      try {
+        const reqBody = {
+          model: ANTHROPIC_MODEL,
+          max_tokens: 1024,
+          system:
+            'You are a JSON-only tool emitter. Use the emit_flashcards tool to return a non-empty flashcards array for the given Latvian sentence. Each flashcard must include base_form, unit, visible=true, and at least one context with lv and ru. No prose.',
+          messages: [{ role: 'user', content: [{ type: 'text', text: it.lv }] }],
+          tools: [
+            {
+              name: 'emit_flashcards',
+              description:
+                'Emit a strictly structured JSON with flashcards for the sentence. At least one context with lv and ru is required.',
+              input_schema: {
+                type: 'object',
+                required: ['flashcards'],
+                properties: { flashcards: { type: 'array' } },
+              },
+            },
+          ],
+          tool_choice: { type: 'tool', name: 'emit_flashcards' },
+        } as const;
+
+        const r = await fetchWithTimeout(ANTHROPIC_API_URL, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': ANTHROPIC_VERSION,
+          },
+          body: JSON.stringify(reqBody),
+        });
+        if (!r.ok) throw new Error(`Provider error ${r.status}`);
+        const j = await r.json();
+        const input = extractToolInput(j, 'emit_flashcards');
+        const fc = Array.isArray(input?.flashcards) ? input.flashcards : [];
+        const firstRu = fc?.[0]?.contexts?.[0]?.ru;
+
+        items.push({
+          sid: it.sid,
+          sig: it.sig,
+          russian: typeof firstRu === 'string' ? firstRu : undefined,
+          cards: (fc || []).map((c: any) => ({
+            base_form: String(c.base_form || ''),
+            base_translation: c.base_translation ? String(c.base_translation) : undefined,
+            unit: c.unit === 'phrase' ? 'phrase' : 'word',
+            forms: Array.isArray(c.forms)
+              ? c.forms.map((f: any) => ({
+                  form: String(f.form || ''),
+                  translation: String(f.translation || ''),
+                  type: String(f.type || 'token'),
+                }))
+              : [],
+            contexts: Array.isArray(c.contexts)
+              ? c.contexts.map((cx: any) => ({
+                  lv: String(cx.lv || ''),
+                  ru: String(cx.ru || ''),
+                  sid: it.sid,
+                  sig: it.sig,
+                }))
+              : [],
+            visible: Boolean(c.visible !== false),
+          })),
+          processingTime: Math.max(1, Date.now() - started),
+        });
+      } catch (e: any) {
+        errors.push({ sid: it.sid, error: e?.message || 'provider error', errorCode: 'PROVIDER' });
+      }
+    }
+
+    const result: BatchResultV1 = {
+      schemaVersion: 1,
+      batchId,
+      items,
+      ...(errors.length ? { errors } : {}),
+      metadata: {
+        totalProcessingTime: Date.now() - started,
+        model: ANTHROPIC_MODEL,
+        chunksProcessed: new Set(manifest.items.map((i) => i.chunkIndex)).size,
+      },
+    };
+
+    const job = jobs.get(batchId);
+    if (!job || job.status !== 'processing') return;
+    const check = ZBatchResultV1.safeParse(result);
+    if (!check.success) {
+      jobs.set(batchId, {
+        status: 'failed',
+        manifest,
+        error: 'Result schema invalid (provider)',
+        createdAt: job.createdAt,
+        finishedAt: Date.now(),
+      });
+      return;
+    }
+    jobs.set(batchId, {
+      status: 'completed',
+      manifest,
+      result,
+      createdAt: job.createdAt,
+      finishedAt: Date.now(),
+    });
+  })().catch(() => {
+    const job = jobs.get(batchId);
+    if (!job) return;
+    jobs.set(batchId, {
+      status: 'failed',
+      manifest,
+      error: 'internal error (provider)',
+      createdAt: job.createdAt,
+      finishedAt: Date.now(),
+    });
+  });
+
+  return res.json({ batchId });
+});
+
+// GET /claude/provider/batch/:batchId — poll provider-backed job
+app.get('/claude/provider/batch/:batchId', (_req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
+  const { batchId } = _req.params;
+  const job = jobs.get(batchId);
+  if (!job) return res.status(404).end();
+  if (job.status === 'processing') return res.status(202).end();
+  if (job.status === 'failed') return res.status(500).json({ error: job.error });
+  return res.json(job.result);
+});
+
+// GET /claude/provider/batch/:batchId/status — simple status route
+app.get('/claude/provider/batch/:batchId/status', (_req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
+  const { batchId } = _req.params;
+  const job = jobs.get(batchId);
+  if (!job) return res.status(404).json({ status: 'failed', error: 'not found' });
+  if (job.status === 'processing') return res.json({ status: 'processing', progress: 0.5 });
+  if (job.status === 'failed') return res.json({ status: 'failed', error: 'internal error' });
+  return res.json({ status: 'completed', progress: 1 });
+});
+
+function extractToolInput(j: any, name: string) {
+  try {
+    const content = j?.content;
+    if (!Array.isArray(content)) return undefined;
+    for (const b of content) if (b?.type === 'tool_use' && b?.name === name) return b?.input;
+  } catch {}
+  return undefined;
+}
 
 // -------------------------------
 // NEW: Batch JSONL builder (tools/tool_choice mock)

@@ -167,7 +167,8 @@ class LlmApiClient {
   async submitBatch(manifest: Manifest): Promise<{ batchId: string; estimatedTime?: number }> {
     try {
       const routeBase = appConfig.network.llmRouteBase;
-      const res = await this.fetchWithTimeout(`${this.baseUrl}${routeBase}/batch`, {
+      const provider = appConfig.llm.useProvider ? '/provider' : '';
+      const res = await this.fetchWithTimeout(`${this.baseUrl}${routeBase}${provider}/batch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -217,8 +218,9 @@ class LlmApiClient {
   async getBatchResult(batchId: string): Promise<BatchResultV1> {
     try {
       const routeBase = appConfig.network.llmRouteBase;
+      const provider = appConfig.llm.useProvider ? '/provider' : '';
       const res = await this.fetchWithTimeout(
-        `${this.baseUrl}${routeBase}/batch/${encodeURIComponent(batchId)}`,
+        `${this.baseUrl}${routeBase}${provider}/batch/${encodeURIComponent(batchId)}`,
       );
 
       if (res.status === 202 || res.status === 204) {
@@ -287,8 +289,9 @@ class LlmApiClient {
     error?: string;
   }> {
     const routeBase = appConfig.network.llmRouteBase;
+    const provider = appConfig.llm.useProvider ? '/provider' : '';
     const res = await this.fetchWithTimeout(
-      `${this.baseUrl}${routeBase}/batch/${encodeURIComponent(batchId)}/status`,
+      `${this.baseUrl}${routeBase}${provider}/batch/${encodeURIComponent(batchId)}/status`,
     );
     if (!res.ok) {
       throw mapHttpError(res, 'Failed to get batch status', 'STATUS_FAILED');
@@ -305,8 +308,9 @@ class LlmApiClient {
    */
   async cancelBatch(batchId: string): Promise<void> {
     const routeBase = appConfig.network.llmRouteBase;
+    const provider = appConfig.llm.useProvider ? '/provider' : '';
     const res = await this.fetchWithTimeout(
-      `${this.baseUrl}${routeBase}/batch/${encodeURIComponent(batchId)}`,
+      `${this.baseUrl}${routeBase}${provider}/batch/${encodeURIComponent(batchId)}`,
       { method: 'DELETE' },
     );
     if (!res.ok && res.status !== 404) {
