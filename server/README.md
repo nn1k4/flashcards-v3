@@ -39,3 +39,23 @@ npm run dev
 Примечание: текущая реализация `single/builder` — mock для фронтенд‑разработки и тестов; реальную
 интеграцию с провайдером LLM добавим отдельным коммитом, сохраняя JSON‑only контракт и
 `tool_choice`.
+
+## Env (provider feature flag)
+
+Включение прод‑провайдера управляется переменными окружения на сервере:
+
+- `ANTHROPIC_API_KEY` — если пусто, `/claude/provider/*` вернёт `501`.
+- `ANTHROPIC_API_URL` — по умолчанию `https://api.anthropic.com/v1/messages`.
+- `ANTHROPIC_VERSION` — по умолчанию `2023-06-01`.
+- `ANTHROPIC_MODEL` — по умолчанию `claude-3-haiku-20240307`.
+- `PROVIDER_TIMEOUT_MS` — таймаут запроса к провайдеру (мс), по умолчанию `15000`.
+- `ALLOWED_ORIGINS` — список разрешённых Origin, через запятую. Если не задан, в dev разрешено всё.
+
+На клиенте включите `config/llm.json → useProvider: true`, чтобы маршруты переключились на
+`/claude/provider/*`.
+
+## Security notes
+
+- CORS: в dev разрешены все Origin; для prod задайте `ALLOWED_ORIGINS`.
+- JSON‑лимит: глобально `1mb`; рекомендуется держать provider payloads «короткими».
+- Логи: не логируйте PII/сырые ответы модели в проде; используйте агрегированные метрики.

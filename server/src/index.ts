@@ -20,8 +20,27 @@ type Job =
 const jobs = new Map<string, Job>();
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+
+// CORS: allow all in dev; restrict by ALLOWED_ORIGINS in prod if provided
+function resolveCors() {
+  const allowed = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowed.length === 0) return cors();
+  return cors({
+    origin(origin, cb) {
+      if (!origin) return cb(null, true);
+      const ok = allowed.some((o) => origin === o);
+      cb(ok ? null : new Error('CORS blocked'), ok);
+    },
+    optionsSuccessStatus: 204,
+  });
+}
+app.use(resolveCors());
+
+// Global JSON body limit (keep modest); provider routes still small payloads
+app.use(express.json({ limit: '1mb' }));
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
@@ -195,7 +214,7 @@ app.post('/claude/provider/single', async (req, res) => {
       disable_parallel_tool_use: true,
     } as const;
 
-    const r = await fetch(ANTHROPIC_API_URL, {
+    const r = await fetchWithTimeout(ANTHROPIC_API_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -457,3 +476,14 @@ app.delete('/claude/batch/:batchId', (_req, res) => {
 app.listen(PORT, () => {
   console.warn(`✅ Backend listening on http://localhost:${PORT}`);
 });
+
+// Helper: fetch with timeout
+function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs?: number } = {}) {
+  const timeoutMs = Math.max(
+    1000,
+    Number(process.env.PROVIDER_TIMEOUT_MS) || init.timeoutMs || 15000,
+  );
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(t));
+}
