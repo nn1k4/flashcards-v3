@@ -8,6 +8,16 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './vitest.setup.ts',
+    // Limit discovery strictly to our src tests and exclude E2E/infra
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: [
+      'node_modules/**',
+      'dist/**',
+      'coverage/**',
+      'pw-e2e/**',
+      'server/**',
+      'playwright.config.ts',
+    ],
     coverage: {
       reporter: ['text', 'html'],
       include: ['src/**/*.{ts,tsx}'],

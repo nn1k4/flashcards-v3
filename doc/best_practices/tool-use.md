@@ -1,7 +1,8 @@
 # tool‑use
 
-⚠️ Реализация в коде на стадии планирования. Схемы и политика ниже — нормативные, но ещё не
-подключены.
+Каноническая схема входа инструмента расположена в `src/types/tool_use.ts` (`ZEmitFlashcardsInput`).
+Политика JSON‑only с принудительным `tool_choice` реализована в слоях
+`LLMAdapter`/`useLLMToolsEmitter`.
 
 ### Пример: emit_flashcards.input (нормативная схема)
 

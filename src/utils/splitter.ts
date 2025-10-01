@@ -66,21 +66,22 @@ export function validateSplitterInvariant(originalText: string, sentences: strin
   }
 }
 
-/** Универсальный base64 (UTF-8) без прямой зависимости от типов Node. */
+/** Универсальный base64 (UTF-8) без устаревших API. */
 function toBase64Utf8(str: string): string {
   const g: any = globalThis as any;
 
-  // Браузерный путь (DOM)
-  if (typeof g.btoa === 'function') {
-    // Корректная UTF-8 упаковка для btoa
-
-    return g.btoa(unescape(encodeURIComponent(str)));
-  }
-
-  // Node-подобный путь (без прямого типа Buffer)
+  // Node / non-DOM environments: предпочитаем Buffer для корректной UTF‑8
   const B: any = g.Buffer;
   if (B && typeof B.from === 'function') {
     return B.from(str, 'utf8').toString('base64');
+  }
+
+  // Браузерный путь: TextEncoder → binary → btoa (без unescape/encodeURIComponent)
+  if (typeof g.TextEncoder === 'function' && typeof g.btoa === 'function') {
+    const bytes: Uint8Array = new g.TextEncoder().encode(str);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+    return g.btoa(binary);
   }
 
   throw new Error('No base64 encoder available');

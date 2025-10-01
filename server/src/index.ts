@@ -89,7 +89,8 @@ app.get('/health', (_req, res) =>
  * Response (mock): { content: [{type:'tool_use', name:'emit_flashcards', input:{ flashcards: [...] }}], stop_reason:'tool_use' }
  */
 app.post('/claude/single', (req, res) => {
-  const rawText: string | undefined = typeof req.body?.text === 'string' ? req.body.text : undefined;
+  const rawText: string | undefined =
+    typeof req.body?.text === 'string' ? req.body.text : undefined;
   const manifestParse = req.body?.manifest ? ZManifest.safeParse(req.body.manifest) : null;
 
   let baseText = rawText?.trim();
@@ -120,6 +121,18 @@ app.post('/claude/single', (req, res) => {
 });
 
 // -------------------------------
+// Provider stubs (feature-flagged): return 501 unless real integration is enabled later
+// -------------------------------
+app.post('/claude/provider/single', (_req, res) => {
+  // Placeholder: future pass-through to provider SDK/API
+  res.status(501).json({ error: 'provider integration disabled' });
+});
+
+app.post('/claude/provider/batch/build-jsonl', (_req, res) => {
+  res.status(501).json({ error: 'provider integration disabled' });
+});
+
+// -------------------------------
 // NEW: Batch JSONL builder (tools/tool_choice mock)
 // -------------------------------
 /**
@@ -129,10 +142,14 @@ app.post('/claude/single', (req, res) => {
  */
 app.post('/claude/batch/build-jsonl', (req, res) => {
   const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);
-  if (!parse.success) return res.status(400).json({ error: 'Invalid manifest', details: parse.error.flatten() });
+  if (!parse.success)
+    return res.status(400).json({ error: 'Invalid manifest', details: parse.error.flatten() });
 
   const manifest = parse.data;
-  const model = typeof req.body?.model === 'string' && req.body.model.trim() ? req.body.model : 'claude-3-haiku-20240307';
+  const model =
+    typeof req.body?.model === 'string' && req.body.model.trim()
+      ? req.body.model
+      : 'claude-3-haiku-20240307';
 
   // Определение инструмента (минимально для mock)
   const tools = [

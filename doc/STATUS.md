@@ -1,8 +1,8 @@
 # STATUS — flashcards-v3 (snapshot)
 
-- S2 ≈ 75–80%: hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use интегрирован в ретраи
-  (LLMAdapter/useLLMToolsEmitter + proxy), добавлен single‑flow (TextStub). Сегментация —
-  переключаемая (primitive | latvian_sentence_tester:local).
+- S2 ≈ 80–85% (updated 2025-10-01): hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use
+  интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter + proxy), добавлен single‑flow (TextStub).
+  Сегментация — переключаемая (primitive | latvian_sentence_tester:local).
 - Ближайшие шаги (План доработок S2 — обновлён 2025-09-27):
   1. Zod‑схема `emit_flashcards` (tool_use.input) + строгий парсер первого `tool_use` нужного имени;
   2. Адаптеры `LLMAdapter` (single/tools JSON‑only) и `BatchAdapter` (Message Batches parity);

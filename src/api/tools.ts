@@ -1,13 +1,13 @@
+import type { MessagesRequest, MessagesResponse } from '../adapters/LLMAdapter';
 import { config as appConfig } from '../config';
 import type { Manifest } from '../types/manifest';
-import type { MessagesRequest, MessagesResponse } from '../adapters/LLMAdapter';
 import { apiClient } from './client';
 
 /** Call mock proxy for single tool-use. Converts a MessagesRequest into proxy body. */
 export async function callMessagesViaProxy(req: MessagesRequest): Promise<MessagesResponse> {
   const base = apiClient.getBaseUrl();
   const routeBase = appConfig.network.llmRouteBase;
-  const url = `${base}${routeBase}/single`;
+  const url = `${base}${routeBase}${appConfig.llm.useProvider ? '/provider/single' : '/single'}`;
 
   // Extract a text if available (first user text block)
   let text: string | undefined;
@@ -34,7 +34,9 @@ export async function callMessagesViaProxy(req: MessagesRequest): Promise<Messag
 export async function buildBatchJsonl(manifest: Manifest, model?: string): Promise<string[]> {
   const base = apiClient.getBaseUrl();
   const routeBase = appConfig.network.llmRouteBase;
-  const url = `${base}${routeBase}/batch/build-jsonl`;
+  const url =
+    `${base}${routeBase}$${''}`.replace('$', '') +
+    (appConfig.llm.useProvider ? `/provider/batch/build-jsonl` : `/batch/build-jsonl`);
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -44,4 +46,3 @@ export async function buildBatchJsonl(manifest: Manifest, model?: string): Promi
   const json = (await res.json()) as { lines: string[] };
   return json.lines ?? [];
 }
-

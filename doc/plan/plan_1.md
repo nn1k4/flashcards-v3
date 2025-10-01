@@ -155,21 +155,22 @@ Status: ✅ Done (Acceptance met)
   (`tool_use.input` + Zod), агрегация по SID.
 - LLMAdapter (single), BatchAdapter (create/status/result).
 
-🚧 В процессе (~75–80%). Ядро готово; tool-use интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter
-через proxy), добавлен single‑flow (TextStub), bump policy для `max_tokens` (unit‑test).
+🚧 В процессе (~80–85%). Ядро готово; tool-use интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter
+через proxy), добавлен single‑flow (TextStub), bump policy для `max_tokens` (unit‑test). Подключён
+mock batch JSONL builder; остаётся production batch/tool-use путь.
 
 Status
 
 - ✅ FSM + селекторы/флаги; ✅ useBatch/useBatchPipeline; ✅ агрегация по SID; ✅ Retry-After; ✅
   ErrorBanners; ✅ Zod DTO/Manifest; ✅ конфиги; ✅ тесты.
-- ❌ Tool-use adapters (LLMAdapter/BatchAdapter); ❌ Zod-схема emit_flashcards; ❌ парсер JSON-only
-  tool_use.
+- ✅ Tool-use adapters (LLMAdapter/BatchAdapter); ✅ Zod-схема `emit_flashcards`; ✅ парсер
+  JSON-only `tool_use` (первый блок по имени инструмента).
 
 TODO
 
-1. Полный batch/tool‑use путь: builder→submit JSONL с tools; агрегирование по SID — в прод.
-2. E2E smoke сценарий: tool‑use → Zod → агрегатор → UI.
-3. Док‑обновления приёмки TRS для tool‑use single/batch.
+1. Production batch/tool‑use: builder→submit JSONL→parse→UI (реальный провайдер, фича‑флаг).
+2. E2E smoke для прод‑пути batch/tool‑use.
+3. Обновить приемочные критерии TRS для single/batch tool‑use после включения прод‑пути.
 
 - FSM: finalized to `{ idle → submitted → in_progress → ready | failed }` with selectors
   `isIdle/isBusy/isDone/isFailed`.

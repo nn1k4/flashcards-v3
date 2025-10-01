@@ -2,6 +2,7 @@
   "defaultModel": "claude-3-haiku-20240307",
   "maxTokensDefault": 1024,
   "toolChoice": "flashcards_emitter",
+  "useProvider": false,
   "promptCaching": {
     "enabled": true
   }
