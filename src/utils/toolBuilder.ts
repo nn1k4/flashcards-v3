@@ -39,3 +39,23 @@ export const EMIT_FLASHCARDS_DESCRIPTION =
   'Возвращает строго структурированный JSON с набором флэшкарт (словарных карточек) для изучения латышского языка. ' +
   'Каждая карточка содержит базовую форму слова/фразы, переводы, грамматические формы и контексты использования. ' +
   'Все поля должны строго соответствовать схеме. Никакого текста вне определенных полей.';
+
+/**
+ * Строит ToolDefinition для emit_flashcards инструмента.
+ * Преобразует Zod схему в JSON Schema для Claude API.
+ *
+ * @returns ToolDefinition с именем, описанием и JSON Schema для input
+ */
+export function buildEmitFlashcardsTool(): ToolDefinition {
+  const schema = ZEmitFlashcardsInput as any;
+  const jsonSchema = zodToJsonSchema(schema, {
+    target: 'jsonSchema7',
+    $refStrategy: 'none',
+  });
+  const { $schema, ...inputSchema } = jsonSchema as any;
+  return {
+    name: EMITTER_TOOL_NAME,
+    description: EMIT_FLASHCARDS_DESCRIPTION,
+    input_schema: inputSchema,
+  };
+}
