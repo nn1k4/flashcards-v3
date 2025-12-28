@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildEmitFlashcardsTool } from '../../utils/toolBuilder';
+import { z } from 'zod';
+import { buildEmitFlashcardsTool, buildToolFromZodSchema } from '../../utils/toolBuilder';
 
 describe('buildEmitFlashcardsTool', () => {
   it('should return object with name, description, input_schema', () => {
@@ -298,5 +299,65 @@ describe('buildEmitFlashcardsTool', () => {
       const flashcardSchema2 = schema2.properties.flashcards.items;
       expect(JSON.stringify(flashcardSchema1)).toBe(JSON.stringify(flashcardSchema2));
     });
+  });
+});
+
+describe('Task 9: buildToolFromZodSchema generic function', () => {
+  it('should build tool from custom schema', () => {
+    const customSchema = z.object({
+      message: z.string().describe('A greeting message'),
+      count: z.number().min(1).describe('Number of times to greet'),
+    });
+
+    const tool = buildToolFromZodSchema(
+      'greet_user',
+      'Greets the user with a message repeated multiple times',
+      customSchema,
+    );
+
+    expect(tool.name).toBe('greet_user');
+    expect(tool.description).toBe('Greets the user with a message repeated multiple times');
+    expect(tool.input_schema).toHaveProperty('type', 'object');
+    expect(tool.input_schema).toHaveProperty('properties');
+    const schema = tool.input_schema as any;
+    expect(schema.properties).toHaveProperty('message');
+    expect(schema.properties).toHaveProperty('count');
+  });
+
+  it('should apply custom options to schema conversion', () => {
+    const customSchema = z.object({
+      name: z.string(),
+    });
+
+    const tool = buildToolFromZodSchema(
+      'test_tool',
+      'Test tool with custom options',
+      customSchema,
+      {
+        target: 'jsonSchema7',
+        strictNullChecks: false,
+      },
+    );
+
+    expect(tool).toHaveProperty('name');
+    expect(tool).toHaveProperty('description');
+    expect(tool).toHaveProperty('input_schema');
+    const schema = tool.input_schema as any;
+    expect(schema.type).toBe('object');
+    expect(schema.properties.name).toBeDefined();
+  });
+
+  it('should not include $ref in output schema', () => {
+    const customSchema = z.object({
+      id: z.string().uuid(),
+      data: z.object({
+        nested: z.string(),
+      }),
+    });
+
+    const tool = buildToolFromZodSchema('complex_tool', 'Tool with nested schema', customSchema);
+
+    const schemaString = JSON.stringify(tool.input_schema);
+    expect(schemaString).not.toContain('$ref');
   });
 });

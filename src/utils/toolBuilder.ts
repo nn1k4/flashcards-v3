@@ -59,3 +59,34 @@ export function buildEmitFlashcardsTool(): ToolDefinition {
     input_schema: inputSchema,
   };
 }
+
+/**
+ * Generic tool builder функция для построения ToolDefinition из Zod схемы.
+ * Преобразует Zod схему в JSON Schema для Claude API с кастомными опциями.
+ *
+ * @param name - Имя tool
+ * @param description - Описание tool
+ * @param schema - Zod схема для input
+ * @param options - Опции для построения JSON Schema
+ * @returns ToolDefinition с именем, описанием и JSON Schema для input
+ */
+export function buildToolFromZodSchema(
+  name: string,
+  description: string,
+  schema: z.ZodType,
+  options: ToolBuildOptions = {},
+): ToolDefinition {
+  const defaultOptions = {
+    target: 'jsonSchema7' as const,
+    strictNullChecks: true,
+    $refStrategy: 'none' as const,
+  };
+  const mergedOptions = { ...defaultOptions, ...options };
+  const jsonSchema = zodToJsonSchema(schema, mergedOptions as any);
+  const { $schema, ...inputSchema } = jsonSchema as any;
+  return {
+    name,
+    description,
+    input_schema: inputSchema,
+  };
+}
