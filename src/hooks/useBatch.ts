@@ -32,10 +32,10 @@ import {
 import { buildLvTextFromManifest, validateManifest } from '../utils/manifest';
 
 // Повторные попытки / очередь ретраев
-import { buildManifestWithEngine } from '../utils/manifest';
-import { RetryQueue } from '../utils/retry';
 import { LLMAdapter } from '../adapters/LLMAdapter';
 import { callMessagesViaProxy } from '../api/tools';
+import { buildManifestWithEngine } from '../utils/manifest';
+import { RetryQueue } from '../utils/retry';
 import { invokeWithMaxTokensBump } from '../utils/tooluse';
 import { useErrorBanners } from './useErrorBanners';
 
@@ -245,97 +245,110 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
     [],
   );
 
-  const processBatchResult = useCallback(async (m: Manifest, batchData: BatchResultV1) => {
-    const { data: aggregated, metrics } = aggregateResultsBySid(m, batchData);
-    setAggregatedState(aggregated);
+  const processBatchResult = useCallback(
+    async (m: Manifest, batchData: BatchResultV1) => {
+      const { data: aggregated, metrics } = aggregateResultsBySid(m, batchData);
+      setAggregatedState(aggregated);
 
-    // Отметим полученные / ошибочные SID в FSM
-    if (batchData.items?.length) {
-      for (const it of batchData.items) {
-        dispatch({ type: 'SID_RECEIVED', payload: { sid: it.sid } } as any);
-      }
-    }
-    if (batchData.errors?.length) {
-      for (const er of batchData.errors) {
-        dispatch({ type: 'SID_FAILED', payload: { sid: er.sid, error: er.error } } as any);
-
-        const mi = m.items[er.sid];
-        if (mi && (er.error || '').toUpperCase() !== 'PERMANENT_FAILURE') {
-          retryQueue.current.enqueue(
-            er.sid,
-            mi.lv,
-            new ApiError(er.error, er.errorCode || 'UNKNOWN'),
-          );
+      // Отметим полученные / ошибочные SID в FSM
+      if (batchData.items?.length) {
+        for (const it of batchData.items) {
+          dispatch({ type: 'SID_RECEIVED', payload: { sid: it.sid } } as any);
         }
       }
-    }
+      if (batchData.errors?.length) {
+        for (const er of batchData.errors) {
+          dispatch({ type: 'SID_FAILED', payload: { sid: er.sid, error: er.error } } as any);
 
-    // Сборка RU/LV и карточек строго по манифесту
-    const lvText = buildLvTextFromManifest(m, true);
-    const ruText = buildRussianTextFromAggregation(m, aggregated, true);
-    const cards = extractAllFlashcards(aggregated);
-
-    setBatchResult({ lvText, ruText, cards, metrics });
-
-    // Если есть ошибки — обработать retry-очередь (best-effort, можно вынести в отдельный шаг)
-    if (batchData.errors?.length) {
-      await retryQueue.current.processQueue(
-        m.batchId,
-        async (_sid: number, lv: string) => {
-          const adapter = new LLMAdapter({ callMessages: callMessagesViaProxy });
-          const req = {
-            model: appConfig.llm.defaultModel,
-            system: { type: 'text', text: 'Return strictly structured JSON via emit_flashcards tool.' },
-            messages: [{ role: 'user', content: [{ type: 'text', text: lv }] }],
-            tools: [],
-            tool_choice: { type: 'tool', name: 'emit_flashcards' },
-            disable_parallel_tool_use: true,
-            max_tokens: appConfig.llm.maxTokensDefault,
-          } as const;
-          const out = await invokeWithMaxTokensBump(
-            (r) => adapter.invokeEmitFlashcards(r as any),
-            req as any,
-            { attempts: 2 },
-          );
-          if (!out.ok) throw new Error(out.stopReason || 'tool-use failed');
-          return out.data; // { flashcards: [...] }
-        },
-        (_sid: number, retryResult: unknown) => {
-          try {
-            const sub = retryResult as { flashcards: Flashcard[] };
-            const subAgg: AggregatedBySid = new Map();
-            subAgg.set(_sid, {
-              ru: (sub.flashcards?.[0]?.contexts?.[0]?.ru?.trim() ? [sub.flashcards[0]!.contexts[0]!.ru!] : []),
-              cards: sub.flashcards ?? [],
-              warnings: [],
-            });
-            setAggregatedState((prev) => {
-              const base: AggregatedBySid = prev ? new Map(prev) : new Map();
-              subAgg.forEach((bucket, s) => {
-                if (!base.has(s)) base.set(s, { ru: [], cards: [], warnings: [] });
-                const b = base.get(s)!;
-                if (bucket.ru.length) b.ru.push(...bucket.ru);
-                if (bucket.cards.length) b.cards.push(...bucket.cards);
-                if (bucket.warnings.length) b.warnings.push(...bucket.warnings);
-              });
-              const lvText2 = buildLvTextFromManifest(m, true);
-              const ruText2 = buildRussianTextFromAggregation(m, base, true);
-              const cards2 = extractAllFlashcards(base);
-              const metrics2 = computeMetricsFromAggregated(m, base);
-              setBatchResult({ lvText: lvText2, ruText: ruText2, cards: cards2, metrics: metrics2 });
-              dispatch({ type: 'SID_RECEIVED', payload: { sid: _sid } } as any);
-              return base;
-            });
-          } catch (e) {
-            console.warn('retry merge failed:', e);
+          const mi = m.items[er.sid];
+          if (mi && (er.error || '').toUpperCase() !== 'PERMANENT_FAILURE') {
+            retryQueue.current.enqueue(
+              er.sid,
+              mi.lv,
+              new ApiError(er.error, er.errorCode || 'UNKNOWN'),
+            );
           }
-        },
-        (sid: number, error: Error) => {
-          dispatch({ type: 'SID_FAILED', payload: { sid, error: error.message } } as any);
-        },
-      );
-    }
-  }, []);
+        }
+      }
+
+      // Сборка RU/LV и карточек строго по манифесту
+      const lvText = buildLvTextFromManifest(m, true);
+      const ruText = buildRussianTextFromAggregation(m, aggregated, true);
+      const cards = extractAllFlashcards(aggregated);
+
+      setBatchResult({ lvText, ruText, cards, metrics });
+
+      // Если есть ошибки — обработать retry-очередь (best-effort, можно вынести в отдельный шаг)
+      if (batchData.errors?.length) {
+        await retryQueue.current.processQueue(
+          m.batchId,
+          async (_sid: number, lv: string) => {
+            const adapter = new LLMAdapter({ callMessages: callMessagesViaProxy });
+            const req = {
+              model: appConfig.llm.defaultModel,
+              system: {
+                type: 'text',
+                text: 'Return strictly structured JSON via emit_flashcards tool.',
+              },
+              messages: [{ role: 'user', content: [{ type: 'text', text: lv }] }],
+              tools: [],
+              tool_choice: { type: 'tool', name: 'emit_flashcards' },
+              disable_parallel_tool_use: true,
+              max_tokens: appConfig.llm.maxTokensDefault,
+            } as const;
+            const out = await invokeWithMaxTokensBump(
+              (r) => adapter.invokeEmitFlashcards(r as any),
+              req as any,
+              { attempts: 2 },
+            );
+            if (!out.ok) throw new Error(out.stopReason || 'tool-use failed');
+            return out.data; // { flashcards: [...] }
+          },
+          (_sid: number, retryResult: unknown) => {
+            try {
+              const sub = retryResult as { flashcards: Flashcard[] };
+              const subAgg: AggregatedBySid = new Map();
+              subAgg.set(_sid, {
+                ru: sub.flashcards?.[0]?.contexts?.[0]?.ru?.trim()
+                  ? [sub.flashcards[0]!.contexts[0]!.ru!]
+                  : [],
+                cards: sub.flashcards ?? [],
+                warnings: [],
+              });
+              setAggregatedState((prev) => {
+                const base: AggregatedBySid = prev ? new Map(prev) : new Map();
+                subAgg.forEach((bucket, s) => {
+                  if (!base.has(s)) base.set(s, { ru: [], cards: [], warnings: [] });
+                  const b = base.get(s)!;
+                  if (bucket.ru.length) b.ru.push(...bucket.ru);
+                  if (bucket.cards.length) b.cards.push(...bucket.cards);
+                  if (bucket.warnings.length) b.warnings.push(...bucket.warnings);
+                });
+                const lvText2 = buildLvTextFromManifest(m, true);
+                const ruText2 = buildRussianTextFromAggregation(m, base, true);
+                const cards2 = extractAllFlashcards(base);
+                const metrics2 = computeMetricsFromAggregated(m, base);
+                setBatchResult({
+                  lvText: lvText2,
+                  ruText: ruText2,
+                  cards: cards2,
+                  metrics: metrics2,
+                });
+                dispatch({ type: 'SID_RECEIVED', payload: { sid: _sid } } as any);
+                return base;
+              });
+            } catch (e) {
+              console.warn('retry merge failed:', e);
+            }
+          },
+          (sid: number, error: Error) => {
+            dispatch({ type: 'SID_FAILED', payload: { sid, error: error.message } } as any);
+          },
+        );
+      }
+    },
+    [setAggregatedState],
+  );
 
   // -----------------------------
   // Публичные действия

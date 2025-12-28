@@ -373,3 +373,30 @@ const payload = zFlashcardsSchema.parse(toolUse?.input);
 - Prompt Cache держим стабильным (не трогаем `tool_choice`).
 - `max_tokens`: частичный успех + баннер, Retry поднимает лимиты/дробит, порядок сохраняет **SID**.
 - Server‑tools выключены по умолчанию; включать осознанно и с форматными требованиями.
+
+---
+
+## 14) Пример использования buildEmitFlashcardsTool()
+
+После реализации в §S2 можно строить tool definition так:
+
+```typescript
+import { buildEmitFlashcardsTool } from '@/utils/toolBuilder';
+
+// Получить tool definition
+const emitTool = buildEmitFlashcardsTool();
+
+// Использовать в запросе к Claude
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-20250514',
+  max_tokens: 4096,
+  tools: [emitTool],
+  tool_choice: { type: 'tool', name: 'emit_flashcards' },
+  disable_parallel_tool_use: true,
+  messages: [{ role: 'user', content: 'Проанализируй текст...' }],
+});
+```
+
+Детали реализации: `src/utils/toolBuilder.ts` (построение JSON Schema из Zod).
+
+---

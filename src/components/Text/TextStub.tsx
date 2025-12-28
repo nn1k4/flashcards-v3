@@ -1,11 +1,11 @@
 import React from 'react';
+import { callMessagesViaProxy } from '../../api/tools';
+import { config as appConfig } from '../../config';
 import { useBatchPipeline } from '../../hooks/useBatch';
 import { useLLMToolsEmitter } from '../../hooks/useLLMToolsEmitter';
-import { callMessagesViaProxy } from '../../api/tools';
-import { ZEmitFlashcardsInput } from '../../types/tool_use';
-import { config as appConfig } from '../../config';
-import { invokeWithMaxTokensBump } from '../../utils/tooluse';
 import type { Flashcard } from '../../types/dto';
+import { ZEmitFlashcardsInput } from '../../types/tool_use';
+import { invokeWithMaxTokensBump } from '../../utils/tooluse';
 
 export default function TextStub() {
   const [text, setText] = React.useState('Sveiki! Es mācos latviešu valodu.');
@@ -16,7 +16,7 @@ export default function TextStub() {
 
   const emitter = useLLMToolsEmitter<{ flashcards: Flashcard[] }>({
     callMessages: callMessagesViaProxy,
-    schema: ZEmitFlashcardsInput,
+    schema: ZEmitFlashcardsInput as any,
   });
 
   const onSingleToolUse = async () => {
@@ -33,11 +33,9 @@ export default function TextStub() {
         disable_parallel_tool_use: true,
         max_tokens: appConfig.llm.maxTokensDefault,
       } as const;
-      const res = await invokeWithMaxTokensBump(
-        (r) => emitter.invoke(r as any),
-        req as any,
-        { attempts: 2 },
-      );
+      const res = await invokeWithMaxTokensBump((r) => emitter.invoke(r as any), req as any, {
+        attempts: 2,
+      });
       if (!res.ok) throw new Error(res.stopReason || 'tool-use failed');
       setSingleCards(res.data.flashcards ?? []);
     } catch (e) {

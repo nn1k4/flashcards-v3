@@ -52,7 +52,7 @@ export function buildEmitFlashcardsTool(): ToolDefinition {
     target: 'jsonSchema7',
     $refStrategy: 'none',
   });
-  const { $schema, ...inputSchema } = jsonSchema as any;
+  const { _$schema, ...inputSchema } = jsonSchema as any;
   return {
     name: EMITTER_TOOL_NAME,
     description: EMIT_FLASHCARDS_DESCRIPTION,
@@ -83,7 +83,7 @@ export function buildToolFromZodSchema(
   };
   const mergedOptions = { ...defaultOptions, ...options };
   const jsonSchema = zodToJsonSchema(schema, mergedOptions as any);
-  const { $schema, ...inputSchema } = jsonSchema as any;
+  const { _$schema, ...inputSchema } = jsonSchema as any;
   return {
     name,
     description,

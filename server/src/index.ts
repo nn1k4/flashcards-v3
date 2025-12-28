@@ -455,7 +455,9 @@ function extractToolInput(j: any, name: string) {
     const content = j?.content;
     if (!Array.isArray(content)) return undefined;
     for (const b of content) if (b?.type === 'tool_use' && b?.name === name) return b?.input;
-  } catch {}
+  } catch {
+    // intentionally empty
+  }
   return undefined;
 }
 

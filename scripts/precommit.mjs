@@ -14,11 +14,15 @@ let eslintBin = '';
 let prettierBin = '';
 try {
   eslintBin = require.resolve('eslint/bin/eslint.js');
-} catch {}
+} catch {
+  // intentionally empty
+}
 try {
   const prettierPkg = require.resolve('prettier/package.json');
   prettierBin = path.resolve(path.dirname(prettierPkg), 'bin/prettier.cjs');
-} catch {}
+} catch {
+  // intentionally empty
+}
 
 // Programmatic lint-staged config with absolute executables to avoid "not recognized" on Windows
 const config = {};
