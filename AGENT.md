@@ -6,14 +6,15 @@
 
 ---
 
-Статус: S2 — ядро готово; tool-use отсутствует (LLMAdapter/BatchAdapter, emit_flashcards schema).
+Статус: S2 100% — tool-builder реализован; ядро готово.
 
 Быстрые ссылки для реализации
 
+- `src/utils/toolBuilder.ts` — генератор tool definitions из Zod-схем (JSON Schema v7)
+- `src/types/tool_use.ts` — zod-схемы для `emit_flashcards.input`
+- `doc/best_practices/tool-use.md` — политика/контракты + примеры использования
 - `src/adapters/LLMAdapter.ts` — слой tool-use (single-tool, JSON-only, tool_choice fixed)
 - `src/adapters/BatchAdapter.ts` — обвязка для Message Batches parity
-- `src/types/tool_use.ts` — zod-схемы для `emit_flashcards.input`
-- `doc/best_practices/tool-use.md` — политика/контракты
 
 ## 0) Каноничные источники (читать по порядку)
 
@@ -225,8 +226,8 @@ RU/target по SID ← Каноникализация
 ### Git hygiene (правило для артефактов)
 
 - Если в процессе ты создаёшь каталоги с артефактами рантайма/тестов/репортов (например,
-  `test-results/`, `playwright-report/`, `coverage/`, `traces/`, `screenshots/`), —
-  обязательно сразу добавляй их в `.gitignore` одним коммитом `chore(git): ignore <artifact>`.
+  `test-results/`, `playwright-report/`, `coverage/`, `traces/`, `screenshots/`), — обязательно
+  сразу добавляй их в `.gitignore` одним коммитом `chore(git): ignore <artifact>`.
 - Мотив: не засорять историю и CI лишними файлами; упростить код-ревью.
 
 ---
