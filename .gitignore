@@ -57,3 +57,4 @@ temp/
 # --- Hosting (optional, safe to ignore) ---
 .vercel/
 .netlify/
+/.worktrees/
