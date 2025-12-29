@@ -1,17 +1,17 @@
 # STATUS — flashcards-v3 (snapshot)
 
-- S2 ≈ 90–95% (updated 2025-10-01): hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use
+- S2 = 100% (updated 2025-12-29): hooks/FSM/aggregation/config/error‑UX/tests — готово; tool‑use
   интегрирован в ретраи (LLMAdapter/useLLMToolsEmitter + proxy), добавлен single‑flow (TextStub).
   Сегментация — переключаемая (primitive | latvian_sentence_tester:local). Включён провайдер:
   `/claude/provider/single` и `/claude/provider/batch*` на сервере + клиентские маршруты по флагу
-  `llm.useProvider`.
-- Ближайшие шаги (План доработок S2 — обновлён 2025-09-27):
-  1. Zod‑схема `emit_flashcards` (tool_use.input) + строгий парсер первого `tool_use` нужного имени;
-  2. Адаптеры `LLMAdapter` (single/tools JSON‑only) и `BatchAdapter` (Message Batches parity);
-  3. Хук `useLLMToolsEmitter` (обёртка над LLMAdapter; stop reasons, в т.ч. `max_tokens`);
-  4. Реализация `RetryQueue`: split‑retry проблемных SID + merge результатов;
-  5. Чанкование из конфигов (вынести maxSentencesPerChunk из кода);
-  6. Сегментация: задел `latvian_sentence_tester:local` (интерфейс/флаг), по умолчанию — primitive.
+  `llm.useProvider`. **Tool-builder реализован** (`src/utils/toolBuilder.ts`) — генератор Claude API
+  tool definitions из Zod-схем (JSON Schema v7, 100% test coverage).
+- Ближайшие шаги (S3 — обновлён 2025-12-29):
+  1. Интеграция toolBuilder в LLMAdapter/BatchAdapter (использовать `buildEmitFlashcardsTool()`);
+  2. E2E smoke test с реальным Claude API (проверка generated schema);
+  3. Provider batch → Message Batches API full parity;
+  4. Reading mode (tooltip perf, context menu, reveal-on-peek);
+  5. Flashcards mode polish (navigation, flip animations, context expansion).
 
 Чек‑лист
 
@@ -36,6 +36,8 @@
 - ✅ Provider single/tool‑use — включаемо флагом `llm.useProvider`; mock single/batch сохранены.
 - ✅ Provider batch submit/result/status — сервер реализует `/claude/provider/batch*`; клиент
   учитывает флаг.
+- ✅ Tool-builder — `src/utils/toolBuilder.ts` (buildEmitFlashcardsTool, buildToolFromZodSchema;
+  JSON Schema v7, 41 тест, 100% coverage).
 - ⚠️ Соответствие Message Batches (официальный API) — на следующем этапе (пока сервер управляет
   батчем сам).
 

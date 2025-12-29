@@ -17,11 +17,13 @@ best-practices → `doc/best_practices/*` (включая `tool-use.md`,
   обрабатываем `stop_reason` (особенно `max_tokens`: bump/split-retry); prompt-caching для
   стабильных `system/tools`.
 
-Status (2025‑10‑01): S2 активен; выполнено ~90–95% (hooks/FSM/aggregation/config/error‑UX/tests;
-provider single/batch + клиентские маршруты по флагу `llm.useProvider`). Tool‑use интегрирован в
-ретраи (LLMAdapter/useLLMToolsEmitter + proxy), есть single‑flow. Сервер поддерживает
+Status (2025‑12‑29): **S2 завершён на 100%** (hooks/FSM/aggregation/config/error‑UX/tests; provider
+single/batch + клиентские маршруты по флагу `llm.useProvider`). Tool‑use интегрирован в ретраи
+(LLMAdapter/useLLMToolsEmitter + proxy), есть single‑flow. Сервер поддерживает
 `/claude/provider/single` и `/claude/provider/batch*`; mock builder и mock batch сохранены для
-offline. Осталось: официальные Message Batches (перенос на следующий шаг).
+offline. **Tool-builder реализован** (`src/utils/toolBuilder.ts`) — генерация Claude API tool
+definitions из Zod-схем (JSON Schema v7, 41 тест, 100% coverage). Следующий этап: S3 (Flashcards
+v1).
 
 ---
 
@@ -32,7 +34,7 @@ offline. Осталось: официальные Message Batches (перено�
 | **v1 (MVP)** | Text/Flashcards/Reading/Translation/Edit; batch toggle; баннеры ошибок; i18n/themes; Import/Export JSON; конфиги+валидация; tool-use | `plan_1.md` (S0–S8)   | DoD plan_1 + TRS §5–§8/§12/§16–§18                          |                       |                                             |
 | **v1.1**     | JSONL-импорт; Restore/Undo; контекстное меню (ПКМ/long-press); `reveal-on-peek`; телеметрия stop reasons                             | `plan_2.md` (S9–S13)  | DoD plan_2 + TRS §6/§9/§10/§15/§19                          |                       |                                             |
 | **v1.2**     | Ingestion: **PDF/OCR/Images/Subtitles/Clipboard**; единый Manifest (SID); lazy/worker; локализация UI                                | `plan_3.md` (S16–S21) | DoD plan_3 + TRS §4/§6/§12/§16/§21                          |                       |                                             |
-| **v1.3**     | Media follow-highlight; Anchors↔Reading; хоткеи/жесты; экспорт **Anki/Quizlet**                                                     | `plan_4.md` (S22–S26) | DoD plan_4 + TRS §5/§6/§13/§16/§19                          |                       |                                             |
+| **v1.3**     | Media follow-highlight; Anchors↔Reading; хоткеи/жесты; экспорт **Anki/Quizlet**                                                      | `plan_4.md` (S22–S26) | DoD plan_4 + TRS §5/§6/§13/§16/§19                          |                       |                                             |
 | **v2.0**     | Профили/подписки/синхронизация; Keys-Vault; \`pipeline.mode = llm                                                                    | local                 | hybrid\`; локальные **Lemma/Dict/MT**; **YouTube Captions** | `plan_5.md` (S27–S34) | DoD plan_5 + TRS §6/§12/§13/§20–§21/§23–§24 |
 
 > Приоритет внутренних доков: оф. Anthropic → `TechnicalGuidesForClaudeAPIv2.0.md` → `tool-use.md` →
@@ -61,8 +63,8 @@ dateFormat  YYYY-MM-DD
 section Этап 1 (MVP)
 S0 Подготовка                 :done,   s0,  2025-08-20, 5d
 S1 Proxy & Health & Ошибки    :done,   s1,  after s0,   5d
-S2 Pipeline Core              :active, s2,  after s0,   6d
-S3 Flashcards v1              :        s3,  after s2,   5d
+S2 Pipeline Core              :done,   s2,  after s0,   6d
+S3 Flashcards v1              :active, s3,  after s2,   5d
 S4 Reading v1                 :        s4,  after s3,   6d
 S5 Translation v1             :        s5,  after s4,   3d
 S6 Edit v1                    :        s6,  after s5,   5d
@@ -105,10 +107,8 @@ S34 Polish & Release          :        s34, after s33,  2d
 
 ```
 
-Status snapshot: S0, S1 ✅; S2 implemented & under review; next S3. S34 Polish & Release : s34,
-after s33, 2d
-
-```
+Status snapshot (2025-12-29): S0, S1, S2 ✅ complete; S3 (Flashcards v1) active; next S4 (Reading
+v1).
 
 > Даты условны; фактический календарь уточняется по состоянию репозитория и ресурсам.
 
@@ -169,7 +169,6 @@ after s33, 2d
 - **Разнообразие субтитров** → tolerant-парсеры, нормализация, логи проблемных строк.
 - **Безопасность профилей/ключей (v2.0)** → шифрование AES-GCM, HttpOnly, audit-лог, минимум логов.
 - **i18n-долги** → линт на «сырые» строки, блок PR, словарный реестр.
-- **Блокер S2:** Tool‑use слой не реализован; блокирует end‑to‑end карточки от Claude.
 
 ---
 
@@ -208,4 +207,7 @@ after s33, 2d
 
 > Все дополнения и изменения дорожной карты синхронизируются с TRS и соответствующим `plan_X.md`;
 > при конфликте приоритет у TRS v5.1 и official Anthropic docs.
+
+```
+
 ```
