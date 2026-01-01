@@ -1,11 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { config } from '../config';
-import {
-  selectCurrentCard,
-  selectTotalVisible,
-  selectVisibleCards,
-  useFlashcardsStore,
-} from '../stores/flashcardsStore';
+import { useFlashcardsStore } from '../stores/flashcardsStore';
 import type { Flashcard } from '../types/dto';
 
 export interface UseFlashcardsReturn {
@@ -34,25 +29,40 @@ export interface UseFlashcardsReturn {
   visibleCards: Flashcard[];
 }
 
+// Get stable action references from the store (outside component to avoid re-subscriptions)
+const getActions = () => {
+  const state = useFlashcardsStore.getState();
+  return {
+    next: state.next,
+    prev: state.prev,
+    goTo: state.goTo,
+    flip: state.flip,
+    hide: state.hide,
+    setCards: state.setCards,
+    setExpandedContexts: state.setExpandedContexts,
+  };
+};
+
 /**
  * Headless hook for flashcard navigation and state management.
  * Connects to Zustand store and provides a clean API for UI components.
  */
 export function useFlashcards(): UseFlashcardsReturn {
-  const currentCard = useFlashcardsStore(selectCurrentCard);
+  // Subscribe to primitive state values only (stable references)
+  const cards = useFlashcardsStore((s) => s.cards);
   const currentIndex = useFlashcardsStore((s) => s.currentIndex);
-  const totalVisible = useFlashcardsStore(selectTotalVisible);
   const isFlipped = useFlashcardsStore((s) => s.isFlipped);
   const expandedContexts = useFlashcardsStore((s) => s.expandedContexts);
-  const visibleCards = useFlashcardsStore(selectVisibleCards);
 
-  const storeNext = useFlashcardsStore((s) => s.next);
-  const storePrev = useFlashcardsStore((s) => s.prev);
-  const storeGoTo = useFlashcardsStore((s) => s.goTo);
-  const storeFlip = useFlashcardsStore((s) => s.flip);
-  const storeHide = useFlashcardsStore((s) => s.hide);
-  const storeSetCards = useFlashcardsStore((s) => s.setCards);
-  const storeSetExpandedContexts = useFlashcardsStore((s) => s.setExpandedContexts);
+  // Derive visible cards with useMemo to maintain stable reference
+  const visibleCards = useMemo(() => cards.filter((c) => c.visible), [cards]);
+
+  // Derive current card and total from visibleCards
+  const currentCard = useMemo(
+    () => visibleCards[currentIndex] ?? null,
+    [visibleCards, currentIndex],
+  );
+  const totalVisible = visibleCards.length;
 
   // Get contexts config
   const { default: defaultContexts, max: maxContexts } = config.flashcards.contexts;
@@ -70,30 +80,31 @@ export function useFlashcards(): UseFlashcardsReturn {
     return currentCount < Math.min(totalContexts, maxContexts);
   }, [currentCard, visibleContextsCount, maxContexts]);
 
-  // Actions
-  const next = useCallback(() => storeNext(), [storeNext]);
-  const prev = useCallback(() => storePrev(), [storePrev]);
-  const goTo = useCallback((index: number) => storeGoTo(index), [storeGoTo]);
-  const flip = useCallback(() => storeFlip(), [storeFlip]);
+  // Stable action wrappers using getState()
+  const next = useCallback(() => getActions().next(), []);
+  const prev = useCallback(() => getActions().prev(), []);
+  const goTo = useCallback((index: number) => getActions().goTo(index), []);
+  const flip = useCallback(() => getActions().flip(), []);
 
   const hide = useCallback(() => {
-    storeHide(currentIndex);
-  }, [storeHide, currentIndex]);
+    getActions().hide(useFlashcardsStore.getState().currentIndex);
+  }, []);
 
   const expandContexts = useCallback(() => {
-    if (!currentCard) return;
-    const currentCount = visibleContextsCount;
-    const totalContexts = currentCard.contexts.length;
-    const newCount = Math.min(currentCount + 1, totalContexts, maxContexts);
-    storeSetExpandedContexts(currentIndex, newCount);
-  }, [currentCard, visibleContextsCount, maxContexts, currentIndex, storeSetExpandedContexts]);
+    const state = useFlashcardsStore.getState();
+    const stateVisibleCards = state.cards.filter((c) => c.visible);
+    const card = stateVisibleCards[state.currentIndex];
+    if (!card) return;
+    const ctxConfig = config.flashcards.contexts;
+    const currentCount = state.expandedContexts[state.currentIndex] ?? ctxConfig.default;
+    const totalContexts = card.contexts.length;
+    const newCount = Math.min(currentCount + 1, totalContexts, ctxConfig.max);
+    getActions().setExpandedContexts(state.currentIndex, newCount);
+  }, []);
 
-  const setCards = useCallback(
-    (cards: Flashcard[]) => {
-      storeSetCards(cards);
-    },
-    [storeSetCards],
-  );
+  const setCards = useCallback((cards: Flashcard[]) => {
+    getActions().setCards(cards);
+  }, []);
 
   return {
     currentCard,

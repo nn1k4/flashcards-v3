@@ -2,17 +2,20 @@ import React from 'react';
 import { callMessagesViaProxy } from '../../api/tools';
 import { config as appConfig } from '../../config';
 import { useBatchPipeline } from '../../hooks/useBatch';
+import { useFlashcards } from '../../hooks/useFlashcards';
 import { useLLMToolsEmitter } from '../../hooks/useLLMToolsEmitter';
 import type { Flashcard } from '../../types/dto';
 import { ZEmitFlashcardsInput } from '../../types/tool_use';
 import { invokeWithMaxTokensBump } from '../../utils/tooluse';
+import { FlashcardsView } from '../Flashcards';
 
 export default function TextStub() {
   const [text, setText] = React.useState('Sveiki! Es mācos latviešu valodu.');
   const { submit, cancel, fsmState, isBusy, isFailed, isDone, progress } = useBatchPipeline(20);
   const [singleBusy, setSingleBusy] = React.useState(false);
-  const [singleCards, setSingleCards] = React.useState<Flashcard[] | null>(null);
   const [singleError, setSingleError] = React.useState<string | null>(null);
+  const [showFlashcards, setShowFlashcards] = React.useState(false);
+  const { setCards, totalVisible } = useFlashcards();
 
   const emitter = useLLMToolsEmitter<{ flashcards: Flashcard[] }>({
     callMessages: callMessagesViaProxy,
@@ -22,7 +25,7 @@ export default function TextStub() {
   const onSingleToolUse = async () => {
     setSingleError(null);
     setSingleBusy(true);
-    setSingleCards(null);
+    setShowFlashcards(false);
     try {
       const req = {
         model: appConfig.llm.defaultModel,
@@ -37,7 +40,11 @@ export default function TextStub() {
         attempts: 2,
       });
       if (!res.ok) throw new Error(res.stopReason || 'tool-use failed');
-      setSingleCards(res.data.flashcards ?? []);
+      const cards = res.data.flashcards ?? [];
+      setCards(cards);
+      if (cards.length > 0) {
+        setShowFlashcards(true);
+      }
     } catch (e) {
       setSingleError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -89,16 +96,30 @@ export default function TextStub() {
       </div>
       {/* Single tool-use result */}
       {singleError && <div className="mt-2 text-sm text-red-600">Error: {singleError}</div>}
-      {singleCards && (
+      {totalVisible > 0 && (
         <div className="mt-2 text-sm">
-          <b>Tool-use (single):</b> flashcards = {singleCards.length}
-          {singleCards[0]?.contexts?.[0]?.ru && (
-            <>
-              , sample RU: <i>{singleCards[0]!.contexts[0]!.ru}</i>
-            </>
+          <b>Flashcards:</b> {totalVisible} cards loaded
+          {!showFlashcards && (
+            <button
+              type="button"
+              onClick={() => setShowFlashcards(true)}
+              className="ml-2 text-blue-600 underline"
+            >
+              Show
+            </button>
+          )}
+          {showFlashcards && (
+            <button
+              type="button"
+              onClick={() => setShowFlashcards(false)}
+              className="ml-2 text-blue-600 underline"
+            >
+              Hide
+            </button>
           )}
         </div>
       )}
+      {showFlashcards && <FlashcardsView />}
     </div>
   );
 }
