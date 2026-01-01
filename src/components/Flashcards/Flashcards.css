@@ -1,0 +1,240 @@
+/* Flashcards CSS Variables */
+:root {
+  --card-front-bg: #ffffff;
+  --card-back-bg: #f8f9fa;
+  --card-front-text: #1a1a1a;
+  --card-back-text: #1a1a1a;
+  --card-border: #e5e7eb;
+  --card-shadow: rgba(0, 0, 0, 0.1);
+  --highlight-bg: #fef08a;
+  --highlight-text: inherit;
+  --nav-btn-bg: #f3f4f6;
+  --nav-btn-hover: #e5e7eb;
+  --nav-btn-disabled: #d1d5db;
+}
+
+.dark {
+  --card-front-bg: #1e293b;
+  --card-back-bg: #334155;
+  --card-front-text: #f1f5f9;
+  --card-back-text: #f1f5f9;
+  --card-border: #475569;
+  --card-shadow: rgba(0, 0, 0, 0.3);
+  --highlight-bg: #854d0e;
+  --highlight-text: #fef08a;
+  --nav-btn-bg: #334155;
+  --nav-btn-hover: #475569;
+  --nav-btn-disabled: #1e293b;
+}
+
+/* Flashcards View Container */
+.flashcards-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.flashcards-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  color: var(--card-back-text);
+  opacity: 0.6;
+}
+
+/* Card Container - 3D perspective */
+.card-container {
+  perspective: 1000px;
+  width: 100%;
+  max-width: 400px;
+  height: 300px;
+  cursor: pointer;
+}
+
+/* Card - 3D transform */
+.card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  /* transition is set inline from config */
+}
+
+.card.is-flipped {
+  transform: rotateY(180deg);
+}
+
+/* Card Face - common styles */
+.card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  box-shadow: 0 4px 12px var(--card-shadow);
+  overflow: auto;
+}
+
+.card-front {
+  background: var(--card-front-bg);
+  color: var(--card-front-text);
+}
+
+.card-back {
+  background: var(--card-back-bg);
+  color: var(--card-back-text);
+  transform: rotateY(180deg);
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+/* Card Title */
+.card-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  text-align: center;
+}
+
+.card-back .card-title {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  width: 100%;
+}
+
+/* Unit Badge */
+.unit-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--nav-btn-bg);
+  border-radius: 9999px;
+  color: var(--card-back-text);
+  opacity: 0.7;
+}
+
+/* Context List */
+.context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+}
+
+.context-item {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.context-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.context-lv {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.context-ru {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.no-contexts {
+  opacity: 0.5;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Form Highlight */
+.context-lv mark {
+  background: var(--highlight-bg);
+  color: var(--highlight-text);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Expand Contexts Button */
+.expand-contexts-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px dashed var(--card-border);
+  border-radius: 6px;
+  color: var(--card-back-text);
+  opacity: 0.7;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.expand-contexts-btn:hover {
+  opacity: 1;
+  background: var(--nav-btn-bg);
+}
+
+/* Navigation */
+.flashcards-navigation {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  font-size: 1.25rem;
+  background: var(--nav-btn-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--card-back-text);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--nav-btn-hover);
+}
+
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nav-indicator {
+  font-size: 0.9rem;
+  font-weight: 500;
+  min-width: 60px;
+  text-align: center;
+  color: var(--card-back-text);
+}
