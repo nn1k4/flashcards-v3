@@ -12,7 +12,8 @@ export type FSMEvent =
   | { type: 'BATCH_COMPLETED' }
   | { type: 'BATCH_FAILED'; payload: { error: string } }
   | { type: 'RETRY_SID'; payload: { sid: number } }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'INIT'; payload: { totalSids: number; totalChunks: number } };
 
 // Состояние FSM
 export type BatchFSMState = {
@@ -50,6 +51,10 @@ export function batchFSMReducer(state: BatchFSMState, event: FSMEvent): BatchFSM
   switch (event.type) {
     case 'RESET':
       return createInitialBatchState(state.totalSids, state.totalChunks);
+
+    case 'INIT':
+      // Initialize with new totalSids/totalChunks (used when manifest changes)
+      return createInitialBatchState(event.payload.totalSids, event.payload.totalChunks);
 
     case 'SUBMIT_BATCH': {
       if (state.batchState !== 'idle') {

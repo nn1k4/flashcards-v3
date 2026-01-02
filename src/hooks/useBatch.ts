@@ -158,9 +158,12 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
       return;
     }
 
-    // Переинициализация FSM под новый манифест
+    // Reinitialize FSM with correct counts for the new manifest
+    const totalSids = manifest.items.length;
+    const totalChunks = getChunksCount(manifest);
     dispatch({
-      type: 'RESET',
+      type: 'INIT',
+      payload: { totalSids, totalChunks },
     } as any);
 
     setBatchResult(null);
@@ -170,7 +173,7 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
 
     // Диагностика инвариантов «на холодную»
     try {
-      validateFSMState(createInitialBatchState(manifest.items.length, getChunksCount(manifest)));
+      validateFSMState(createInitialBatchState(totalSids, totalChunks));
     } catch (e) {
       console.warn('FSM initial validation failed:', e);
     }
@@ -356,27 +359,40 @@ export function useBatch(manifest: Manifest | null): UseBatchReturn {
   const startProcessing = useCallback(async () => {
     if (!manifest) throw new Error('Нет манифеста для обработки');
 
+    console.log('[useBatch] startProcessing called, manifest items:', manifest.items.length);
+
     // Новый контроллер, старый — отменяем
     abortController.current?.abort();
     abortController.current = new AbortController();
 
     try {
       // Pre-flight health (TRS §8)
+      console.log('[useBatch] Checking health...');
       await apiClient.getHealth();
+      console.log('[useBatch] Health OK, submitting batch...');
       // INIT (извне редьюсера уже инициализировали, но для наглядности статус)
       dispatch({ type: 'SUBMIT_BATCH' } as any);
 
       // 1) submit с повторами
       const { batchId } = await doSubmitWithRetry(manifest, abortController.current.signal);
+      console.log('[useBatch] Batch submitted, batchId:', batchId);
       dispatch({ type: 'BATCH_STARTED' } as any);
 
       // 2) polling с backoff+jitter и ретраибельностью
+      console.log('[useBatch] Starting polling...');
       const data = await pollUntilReady(batchId, abortController.current.signal);
+      console.log(
+        '[useBatch] Polling complete, items:',
+        data.items?.length,
+        'errors:',
+        data.errors?.length,
+      );
 
       // 3) агрегация по SID + метрики + отметки FSM
       await processBatchResult(manifest, data);
 
       // 4) финализация
+      console.log('[useBatch] Processing complete, dispatching BATCH_COMPLETED');
       dispatch({ type: 'BATCH_COMPLETED' } as any);
 
       // Диагностика инвариантов — не блокирующая (после макротика)
@@ -502,7 +518,7 @@ function getChunksCount(manifest: Manifest): number {
 export function useBatchPipeline(maxSentencesPerChunk?: number) {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const inner = useBatch(manifest);
-  const startedFor = useRef<string | null>(null);
+  const pendingStartRef = useRef<string | null>(null);
   const { cancelProcessing: innerCancel, startProcessing: innerStart, fsmState } = inner;
 
   const submit = useCallback(
@@ -519,22 +535,27 @@ export function useBatchPipeline(maxSentencesPerChunk?: number) {
       );
       const engine = appConfig.nlp?.segmentation?.engine ?? 'primitive';
       const m = buildManifestWithEngine(t, effMax, engine as any);
-      startedFor.current = null; // reset auto-start guard
+      // Mark that we want to start processing for this batchId
+      pendingStartRef.current = m.batchId;
       setManifest(m);
     },
     [maxSentencesPerChunk],
   );
 
   const cancel = useCallback(async () => {
+    pendingStartRef.current = null;
     await innerCancel();
   }, [innerCancel]);
 
-  // Auto-start when a new manifest is set and FSM is idle
+  // Auto-start when FSM becomes idle and we have a pending start request
+  // This handles the race condition: manifest change triggers useBatch's RESET,
+  // and this effect runs AFTER the state update is applied
   useEffect(() => {
     if (!manifest) return;
     if (fsmState.batchState !== 'idle') return;
-    if (startedFor.current === manifest.batchId) return;
-    startedFor.current = manifest.batchId;
+    if (pendingStartRef.current !== manifest.batchId) return;
+    // Clear the pending flag so we don't re-trigger
+    pendingStartRef.current = null;
     // fire and forget; errors will be pushed via banners inside the hook
     innerStart().catch((_e) => {
       /* ignore */

@@ -34,9 +34,13 @@ function resolveCors() {
   if (allowed.length === 0) return cors();
   return cors({
     origin(origin, cb) {
+      // Allow requests with no origin (like mobile apps, curl, etc.)
       if (!origin) return cb(null, true);
-      const ok = allowed.some((o) => origin === o);
-      cb(ok ? null : new Error('CORS blocked'), ok);
+      const ok = allowed.some((o) => origin === o || origin.startsWith('http://localhost:'));
+      if (!ok) {
+        console.warn(`[CORS] Blocked origin: ${origin}, allowed: ${allowed.join(', ')}`);
+      }
+      cb(null, ok); // Don't throw error, just reject
     },
     optionsSuccessStatus: 204,
   });
@@ -171,7 +175,7 @@ app.post('/claude/provider/single', async (req, res) => {
     const toolDef = {
       name: 'emit_flashcards',
       description:
-        'Emit a strictly structured JSON object with flashcards for the given Latvian text. No free text outside fields. Provide at least one flashcard with at least one context including lv and ru.',
+        'Emit a strictly structured JSON object with flashcards for the given Latvian text. Each flashcard must have base_form (Latvian), base_translation (Russian translation of base_form), unit, visible, and at least one context with lv and ru.',
       input_schema: {
         type: 'object',
         additionalProperties: false,
@@ -184,8 +188,11 @@ app.post('/claude/provider/single', async (req, res) => {
               additionalProperties: false,
               properties: {
                 unit: { type: 'string', enum: ['word', 'phrase'] },
-                base_form: { type: 'string' },
-                base_translation: { type: 'string' },
+                base_form: { type: 'string', description: 'Latvian base/dictionary form' },
+                base_translation: {
+                  type: 'string',
+                  description: 'Russian translation of base_form',
+                },
                 forms: {
                   type: 'array',
                   items: {
@@ -217,7 +224,7 @@ app.post('/claude/provider/single', async (req, res) => {
                 },
                 visible: { type: 'boolean' },
               },
-              required: ['unit', 'base_form', 'contexts', 'visible'],
+              required: ['unit', 'base_form', 'base_translation', 'contexts', 'visible'],
             },
           },
         },
@@ -229,7 +236,7 @@ app.post('/claude/provider/single', async (req, res) => {
       model,
       max_tokens: maxTokens,
       system:
-        'You are a JSON-only tool emitter. Use the emit_flashcards tool to return a non-empty flashcards array for the given Latvian text. Each flashcard must include base_form, unit, visible=true, and at least one context with lv and ru. No prose. If unsure, still emit at least one reasonable flashcard.',
+        'You are a JSON-only tool emitter. Use the emit_flashcards tool to return a non-empty flashcards array for the given Latvian text. Each flashcard must include base_form, base_translation (Russian translation of base_form), unit, visible=true, and at least one context with lv and ru. No prose.',
       messages: [{ role: 'user', content: [{ type: 'text', text: baseText }] }],
       tools: [toolDef],
       tool_choice: { type: 'tool', name: 'emit_flashcards' },
@@ -298,36 +305,70 @@ app.post('/claude/provider/batch', (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
 
   const parse = ZManifest.safeParse(req.body?.manifest ?? req.body);
-  if (!parse.success)
+  if (!parse.success) {
+    console.error('[batch] Invalid manifest:', parse.error.flatten());
     return res.status(400).json({ error: 'Invalid manifest', details: parse.error.flatten() });
+  }
   const manifest = parse.data;
   const batchId = manifest.batchId || randomUUID();
+
+  console.log(`[batch] Received batch ${batchId} with ${manifest.items.length} items`);
 
   jobs.set(batchId, { status: 'processing', manifest, createdAt: Date.now() });
 
   // Process asynchronously
   (async () => {
+    console.log(`[batch] Starting async processing for ${batchId}...`);
     const started = Date.now();
     const items: BatchResultV1['items'] = [];
     const errors: NonNullable<BatchResultV1['errors']> = [];
 
     for (const it of manifest.items) {
+      console.log(`[batch] Processing item sid=${it.sid}, lv="${it.lv.slice(0, 50)}..."`);
       try {
         const reqBody = {
           model: ANTHROPIC_MODEL,
           max_tokens: 1024,
           system:
-            'You are a JSON-only tool emitter. Use the emit_flashcards tool to return a non-empty flashcards array for the given Latvian sentence. Each flashcard must include base_form, unit, visible=true, and at least one context with lv and ru. No prose.',
+            'You are a JSON-only tool emitter. Use the emit_flashcards tool to return a non-empty flashcards array for the given Latvian sentence. Each flashcard must include base_form, base_translation (Russian translation of base_form), unit, visible=true, and at least one context with lv and ru. No prose.',
           messages: [{ role: 'user', content: [{ type: 'text', text: it.lv }] }],
           tools: [
             {
               name: 'emit_flashcards',
               description:
-                'Emit a strictly structured JSON with flashcards for the sentence. At least one context with lv and ru is required.',
+                'Emit a strictly structured JSON with flashcards for the sentence. Each flashcard must have base_form (Latvian), base_translation (Russian translation of base_form), unit, visible, and at least one context with lv and ru.',
               input_schema: {
                 type: 'object',
                 required: ['flashcards'],
-                properties: { flashcards: { type: 'array' } },
+                properties: {
+                  flashcards: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['base_form', 'base_translation', 'unit', 'visible', 'contexts'],
+                      properties: {
+                        base_form: { type: 'string', description: 'Latvian base/dictionary form' },
+                        base_translation: {
+                          type: 'string',
+                          description: 'Russian translation of base_form',
+                        },
+                        unit: { type: 'string', enum: ['word', 'phrase'] },
+                        visible: { type: 'boolean' },
+                        contexts: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            required: ['lv', 'ru'],
+                            properties: {
+                              lv: { type: 'string' },
+                              ru: { type: 'string' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
           ],
@@ -377,9 +418,12 @@ app.post('/claude/provider/batch', (req, res) => {
           processingTime: Math.max(1, Date.now() - started),
         });
       } catch (e: any) {
+        console.error(`[batch] Error processing sid=${it.sid}:`, e?.message);
         errors.push({ sid: it.sid, error: e?.message || 'provider error', errorCode: 'PROVIDER' });
       }
     }
+
+    console.log(`[batch] Processing complete: ${items.length} items, ${errors.length} errors`);
 
     const result: BatchResultV1 = {
       schemaVersion: 1,
@@ -406,6 +450,7 @@ app.post('/claude/provider/batch', (req, res) => {
       });
       return;
     }
+    console.log(`[batch] Job ${batchId} completed successfully`);
     jobs.set(batchId, {
       status: 'completed',
       manifest,
@@ -413,7 +458,8 @@ app.post('/claude/provider/batch', (req, res) => {
       createdAt: job.createdAt,
       finishedAt: Date.now(),
     });
-  })().catch(() => {
+  })().catch((err) => {
+    console.error(`[batch] Job ${batchId} failed:`, err);
     const job = jobs.get(batchId);
     if (!job) return;
     jobs.set(batchId, {
@@ -433,6 +479,7 @@ app.get('/claude/provider/batch/:batchId', (_req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(501).json({ error: 'provider integration disabled' });
   const { batchId } = _req.params;
   const job = jobs.get(batchId);
+  console.log(`[batch] Poll ${batchId}: status=${job?.status ?? 'not found'}`);
   if (!job) return res.status(404).end();
   if (job.status === 'processing') return res.status(202).end();
   if (job.status === 'failed') return res.status(500).json({ error: job.error });

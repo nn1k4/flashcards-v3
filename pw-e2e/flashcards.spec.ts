@@ -6,10 +6,10 @@ test.describe('Flashcards UI', () => {
     await page.goto('/');
     await page.getByLabel('LV Text').fill('Sveiki! Es mācos latviešu valodu.');
     await page.getByRole('button', { name: 'Single Tool Use' }).click();
-    // Wait for flashcards to load
+    // Wait for flashcards to load - they auto-show after tool-use completes
     await expect(page.getByText(/Flashcards:/)).toBeVisible({ timeout: 30_000 });
-    // Click Show to display FlashcardsView
-    await page.getByRole('button', { name: 'Show' }).click();
+    // FlashcardsView is automatically shown after tool-use, so wait for it
+    await expect(page.locator('.flashcards-view')).toBeVisible({ timeout: 5_000 });
   }
 
   test('displays flashcard with front side initially', async ({ page }) => {

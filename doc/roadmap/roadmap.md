@@ -17,13 +17,15 @@ best-practices → `doc/best_practices/*` (включая `tool-use.md`,
   обрабатываем `stop_reason` (особенно `max_tokens`: bump/split-retry); prompt-caching для
   стабильных `system/tools`.
 
-Status (2025‑12‑29): **S2 завершён на 100%** (hooks/FSM/aggregation/config/error‑UX/tests; provider
-single/batch + клиентские маршруты по флагу `llm.useProvider`). Tool‑use интегрирован в ретраи
-(LLMAdapter/useLLMToolsEmitter + proxy), есть single‑flow. Сервер поддерживает
-`/claude/provider/single` и `/claude/provider/batch*`; mock builder и mock batch сохранены для
-offline. **Tool-builder реализован** (`src/utils/toolBuilder.ts`) — генерация Claude API tool
-definitions из Zod-схем (JSON Schema v7, 41 тест, 100% coverage). Следующий этап: S3 (Flashcards
-v1).
+Status (2026‑01‑02): **S3 Flashcards v1 завершён** — Zustand store, useFlashcards/useHotkeys hooks,
+FlashcardsView UI с CSS 3D flip анимацией, интеграция с batch pipeline, E2E тесты.
+
+**⚠️ CRITICAL GAP:** Текущая "batch" реализация — синхронный цикл по Messages API. **НЕ реализован**
+официальный Claude Message Batches API (50% экономия, async, JSONL). См. TRS §7,
+`doc/best_practices/Message Batches.md`, `doc/best_practices/MessageBatches2.md`. **Требуется
+отдельный спринт или включение в S4** для полного соответствия TRS.
+
+Следующий этап: S4 (Reading v1) или спринт на Message Batches API.
 
 ---
 

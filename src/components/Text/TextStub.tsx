@@ -11,11 +11,21 @@ import { FlashcardsView } from '../Flashcards';
 
 export default function TextStub() {
   const [text, setText] = React.useState('Sveiki! Es mācos latviešu valodu.');
-  const { submit, cancel, fsmState, isBusy, isFailed, isDone, progress } = useBatchPipeline(20);
+  const { submit, cancel, fsmState, isBusy, isFailed, isDone, progress, batchResult } =
+    useBatchPipeline(20);
   const [singleBusy, setSingleBusy] = React.useState(false);
   const [singleError, setSingleError] = React.useState<string | null>(null);
   const [showFlashcards, setShowFlashcards] = React.useState(false);
   const { setCards, totalVisible } = useFlashcards();
+
+  // Connect batch results to FlashcardsView when batch completes
+  React.useEffect(() => {
+    if (isDone && batchResult?.cards?.length) {
+      console.log('[TextStub] Batch complete, setting cards:', batchResult.cards.length);
+      setCards(batchResult.cards);
+      setShowFlashcards(true);
+    }
+  }, [isDone, batchResult, setCards]);
 
   const emitter = useLLMToolsEmitter<{ flashcards: Flashcard[] }>({
     callMessages: callMessagesViaProxy,

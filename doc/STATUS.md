@@ -38,8 +38,11 @@
   учитывает флаг.
 - ✅ Tool-builder — `src/utils/toolBuilder.ts` (buildEmitFlashcardsTool, buildToolFromZodSchema;
   JSON Schema v7, 41 тест, 100% coverage).
-- ⚠️ Соответствие Message Batches (официальный API) — на следующем этапе (пока сервер управляет
-  батчем сам).
+- ❌ **CRITICAL: Соответствие Message Batches (официальный API)** — НЕ реализовано!
+  - Текущая реализация: синхронный цикл по Messages API (без экономии, без JSONL).
+  - Требуется: официальный Claude Message Batches API (50% экономия, async, JSONL).
+  - План: S4 или отдельный спринт (см. TRS §7, `doc/best_practices/Message Batches.md`).
+  - Ссылки: https://docs.anthropic.com/en/docs/build-with-claude/batch-processing
 
 Ссылки
 
