@@ -48,6 +48,44 @@ function isLikeNetworkError(err: unknown): boolean {
   return err instanceof TypeError && String(err.message).toLowerCase().includes('fetch');
 }
 
+// -----------------------------
+// Message Batches API types
+// -----------------------------
+export interface MessageBatchResult {
+  custom_id: string;
+  result: {
+    type: 'succeeded' | 'errored' | 'canceled' | 'expired';
+    message?: {
+      id: string;
+      content: Array<{ type: string; name?: string; input?: any; text?: string; id?: string }>;
+      stop_reason: string;
+      usage?: {
+        input_tokens: number;
+        output_tokens: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
+    };
+    error?: { type: string; message: string };
+  };
+}
+
+export interface MessageBatch {
+  batchId: string;
+  status: 'in_progress' | 'ended' | 'canceling';
+  requestCounts: {
+    total: number;
+    processing: number;
+    succeeded: number;
+    errored: number;
+    canceled: number;
+    expired: number;
+  };
+  createdAt: string;
+  endedAt?: string;
+  results?: MessageBatchResult[];
+}
+
 function mapHttpError(res: Response, baseMessage: string, code: string): ApiError {
   const status = res.status;
 
@@ -315,6 +353,145 @@ class LlmApiClient {
     );
     if (!res.ok && res.status !== 404) {
       throw mapHttpError(res, 'Failed to cancel batch', 'CANCEL_FAILED');
+    }
+  }
+
+  // -----------------------------
+  // Official Message Batches API (50% cost savings)
+  // -----------------------------
+
+  /**
+   * Create a new batch using official Message Batches API
+   * Uses prompt caching for additional savings
+   */
+  async createMessageBatch(manifest: Manifest): Promise<MessageBatch> {
+    try {
+      console.log(`[apiClient] Creating message batch with ${manifest.items.length} items`);
+
+      const res = await this.fetchWithTimeout(`${this.baseUrl}/claude/batches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manifest }),
+      });
+
+      if (!res.ok) {
+        const err = await this.safeJson(res);
+        const code = (err as any)?.code || 'SUBMIT_FAILED';
+        const retryAfter = parseRetryAfter(res.headers.get('Retry-After'));
+        throw new ApiError(
+          (err as any)?.error || `Failed to create batch: ${res.status}`,
+          code,
+          code === 'RATE_LIMIT' || code === 'OVERLOADED' || res.status >= 500,
+          res.status,
+          retryAfter ?? undefined,
+        );
+      }
+
+      const data = (await this.safeJson(res)) as MessageBatch;
+      console.log(`[apiClient] Batch created: ${data.batchId}, status: ${data.status}`);
+      return data;
+    } catch (err: unknown) {
+      if (err instanceof ApiError) throw err;
+      if (isLikeNetworkError(err)) {
+        throw new ApiError('Network error during batch creation', 'NETWORK_ERROR', true);
+      }
+      throw new ApiError(
+        `Unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+        'UNKNOWN_ERROR',
+        false,
+      );
+    }
+  }
+
+  /**
+   * Get batch status and results from official Message Batches API
+   */
+  async getMessageBatch(batchId: string): Promise<MessageBatch> {
+    try {
+      console.log(`[apiClient] Getting message batch: ${batchId}`);
+
+      const res = await this.fetchWithTimeout(
+        `${this.baseUrl}/claude/batches/${encodeURIComponent(batchId)}`,
+      );
+
+      if (res.status === 202) {
+        // Still processing - parse body for status info
+        const data = (await this.safeJson(res)) as MessageBatch;
+        console.log(
+          `[apiClient] Batch ${batchId} still processing: ${data.requestCounts?.succeeded}/${data.requestCounts?.total || '?'}`,
+        );
+        throw new ApiError(`Batch ${batchId} is still processing`, 'BATCH_PROCESSING', true, 202);
+      }
+
+      if (res.status === 404) {
+        throw new ApiError(`Batch ${batchId} not found`, 'BATCH_NOT_FOUND', false, 404);
+      }
+
+      if (!res.ok) {
+        throw mapHttpError(res, 'Failed to get batch', 'GET_FAILED');
+      }
+
+      const data = (await this.safeJson(res)) as MessageBatch;
+      console.log(`[apiClient] Batch ${batchId} completed: ${data.results?.length || 0} results`);
+      return data;
+    } catch (err: unknown) {
+      if (err instanceof ApiError) throw err;
+      if (isLikeNetworkError(err)) {
+        throw new ApiError('Network error while fetching batch', 'NETWORK_ERROR', true);
+      }
+      throw new ApiError(
+        `Unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+        'UNKNOWN_ERROR',
+        false,
+      );
+    }
+  }
+
+  /**
+   * List all batches from official Message Batches API
+   */
+  async listMessageBatches(): Promise<MessageBatch[]> {
+    try {
+      console.log(`[apiClient] Listing message batches...`);
+
+      const res = await this.fetchWithTimeout(`${this.baseUrl}/claude/batches`);
+      if (!res.ok) {
+        throw mapHttpError(res, 'Failed to list batches', 'LIST_FAILED');
+      }
+      const data = (await this.safeJson(res)) as { batches: MessageBatch[] };
+      console.log(`[apiClient] Found ${data.batches?.length || 0} batches`);
+      return data.batches || [];
+    } catch (err: unknown) {
+      if (err instanceof ApiError) throw err;
+      if (isLikeNetworkError(err)) {
+        throw new ApiError('Network error while listing batches', 'NETWORK_ERROR', true);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Cancel a batch using official Message Batches API
+   */
+  async cancelMessageBatch(batchId: string): Promise<void> {
+    try {
+      console.log(`[apiClient] Canceling message batch: ${batchId}`);
+
+      const res = await this.fetchWithTimeout(
+        `${this.baseUrl}/claude/batches/${encodeURIComponent(batchId)}/cancel`,
+        { method: 'POST' },
+      );
+      if (!res.ok && res.status !== 404) {
+        throw mapHttpError(res, 'Failed to cancel batch', 'CANCEL_FAILED');
+      }
+      console.log(`[apiClient] Batch ${batchId} cancel requested`);
+    } catch (err: unknown) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(
+        `Failed to cancel batch: ${err instanceof Error ? err.message : String(err)}`,
+        'CANCEL_FAILED',
+        false,
+      );
     }
   }
 

@@ -4,8 +4,10 @@ test.describe('Flashcards UI', () => {
   // Helper to load flashcards by submitting text
   async function loadFlashcards(page: import('@playwright/test').Page) {
     await page.goto('/');
-    await page.getByLabel('LV Text').fill('Sveiki! Es mācos latviešu valodu.');
-    await page.getByRole('button', { name: 'Single Tool Use' }).click();
+    // Ensure Single mode is selected (default)
+    await expect(page.getByLabel('Single')).toBeChecked();
+    await page.getByLabel('Latvian Text').fill('Sveiki! Es mācos latviešu valodu.');
+    await page.getByRole('button', { name: 'Submit' }).click();
     // Wait for flashcards to load - they auto-show after tool-use completes
     await expect(page.getByText(/Flashcards:/)).toBeVisible({ timeout: 30_000 });
     // FlashcardsView is automatically shown after tool-use, so wait for it

@@ -97,6 +97,14 @@ function mapErrorToBanner(err: unknown): { key: string; details?: string } {
       return { key: 'errors.batch_not_found' };
     case 'TIMEOUT':
       return { key: 'errors.timeout' };
+    case 'QUOTA_EXHAUSTED':
+      return { key: 'errors.quota_exhausted' };
+    case 'AUTH_ERROR':
+      return { key: 'errors.provider_auth' };
+    case 'BATCH_PROCESSING':
+      return { key: 'errors.batch_processing' };
+    case 'PROVIDER_DISABLED':
+      return { key: 'errors.provider_disabled' };
     default:
       break;
   }
@@ -105,6 +113,7 @@ function mapErrorToBanner(err: unknown): { key: string; details?: string } {
   // Provider-specific helpful messages
   if (s === 501) return { key: 'errors.provider_disabled' };
   if (s === 401 || s === 403) return { key: 'errors.provider_auth' };
+  if (s === 402) return { key: 'errors.quota_exhausted' };
   if (s === 429) return { key: 'errors.rate_limited' };
   if (s === 413) return { key: 'errors.request_too_large' };
   if (s === 529) return { key: 'errors.overloaded' };

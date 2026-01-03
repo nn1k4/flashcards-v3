@@ -21,5 +21,18 @@
   "errors.timeout": "Request timed out.",
   "errors.unknown": "Unexpected error occurred.",
   "errors.provider_disabled": "Provider integration is disabled (missing API key).",
-  "errors.provider_auth": "Provider authentication failed. Check API key."
+  "errors.provider_auth": "Provider authentication failed. Check API key.",
+  "errors.quota_exhausted": "API quota exhausted. Please add credits or wait for limit reset.",
+  "errors.batch_processing": "Batch is still processing. Please wait.",
+  "batch.status.pending": "Pending",
+  "batch.status.in_progress": "Processing",
+  "batch.status.ended": "Completed",
+  "batch.status.canceling": "Canceling",
+  "batch.status.failed": "Failed",
+  "batch.history.title": "Batch History",
+  "batch.history.empty": "No batches sent",
+  "batch.action.cancel": "Cancel",
+  "batch.info.items": "items",
+  "batch.info.succeeded": "succeeded",
+  "batch.info.errored": "errors"
 }

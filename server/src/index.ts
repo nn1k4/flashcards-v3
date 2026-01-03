@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'node:path';
 import { ZBatchResultV1, ZManifest, type BatchResultV1, type Manifest } from './schemas';
+import * as messageBatches from './services/messageBatches';
 // Load .env (server/.env) before reading any env vars
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -709,8 +710,268 @@ app.delete('/claude/batch/:batchId', (_req, res) => {
   return res.status(204).end();
 });
 
+// -------------------------------
+// Official Message Batches API routes
+// Uses @anthropic-ai/sdk for 50% cost savings
+// -------------------------------
+
+// POST /claude/batches — Create a new batch using official API
+app.post('/claude/batches', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    console.log('[/claude/batches] Provider disabled (no API key)');
+    return res
+      .status(501)
+      .json({ error: 'provider integration disabled', code: 'PROVIDER_DISABLED' });
+  }
+
+  try {
+    const { requests, manifest } = req.body;
+
+    // Build requests from manifest if not provided directly
+    let batchRequests = requests;
+    if (!batchRequests && manifest?.items) {
+      console.log(
+        `[/claude/batches] Building requests from manifest with ${manifest.items.length} items`,
+      );
+
+      // System prompt with cache_control for prompt caching
+      const systemWithCache = [
+        {
+          type: 'text',
+          text: 'You are a JSON-only tool emitter. Use the emit_flashcards tool to return flashcards for the given Latvian text. Each flashcard must include base_form (Latvian dictionary form), base_translation (Russian translation), unit ("word" or "phrase"), visible=true, and at least one context with lv (Latvian) and ru (Russian translation). Return only the tool call, no prose.',
+          cache_control: { type: 'ephemeral' },
+        },
+      ];
+
+      // Tool definition with cache_control
+      const toolWithCache = {
+        name: 'emit_flashcards',
+        description: 'Emit flashcards for Latvian text with Russian translations',
+        cache_control: { type: 'ephemeral' },
+        input_schema: {
+          type: 'object',
+          required: ['flashcards'],
+          properties: {
+            flashcards: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['base_form', 'base_translation', 'unit', 'visible', 'contexts'],
+                properties: {
+                  base_form: { type: 'string', description: 'Latvian base/dictionary form' },
+                  base_translation: {
+                    type: 'string',
+                    description: 'Russian translation of base_form',
+                  },
+                  unit: { type: 'string', enum: ['word', 'phrase'] },
+                  visible: { type: 'boolean' },
+                  forms: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        form: { type: 'string' },
+                        translation: { type: 'string' },
+                        type: { type: 'string' },
+                      },
+                    },
+                  },
+                  contexts: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['lv', 'ru'],
+                      properties: {
+                        lv: { type: 'string' },
+                        ru: { type: 'string' },
+                        sid: { type: 'number' },
+                        sig: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      batchRequests = manifest.items.map((item: any) => ({
+        custom_id: String(item.sid),
+        params: {
+          model: ANTHROPIC_MODEL,
+          max_tokens: 1024,
+          system: systemWithCache,
+          messages: [{ role: 'user', content: [{ type: 'text', text: item.lv }] }],
+          tools: [toolWithCache],
+          tool_choice: { type: 'tool', name: 'emit_flashcards' },
+        },
+      }));
+    }
+
+    if (!batchRequests?.length) {
+      return res.status(400).json({ error: 'No requests provided', code: 'INVALID_REQUEST' });
+    }
+
+    console.log(`[/claude/batches] Creating batch with ${batchRequests.length} requests`);
+    console.log(`[/claude/batches] Model: ${ANTHROPIC_MODEL}`);
+    console.log(`[/claude/batches] Prompt caching: enabled (ephemeral)`);
+
+    const batch = await messageBatches.createBatch(batchRequests);
+
+    console.log(`[/claude/batches] Batch created successfully: ${batch.id}`);
+
+    return res.json({
+      batchId: batch.id,
+      status: batch.status,
+      requestCounts: batch.requestCounts,
+      createdAt: batch.createdAt,
+    });
+  } catch (e: any) {
+    console.error('[/claude/batches] Error creating batch:', e?.message || e);
+    console.error('[/claude/batches] Full error:', JSON.stringify(e, null, 2));
+
+    const status = e?.status || 500;
+    const code =
+      status === 429
+        ? 'RATE_LIMIT'
+        : status === 529
+          ? 'OVERLOADED'
+          : status === 402
+            ? 'QUOTA_EXHAUSTED'
+            : status === 401
+              ? 'AUTH_ERROR'
+              : 'SERVER_ERROR';
+
+    return res.status(status).json({
+      error: e?.message || 'Failed to create batch',
+      code,
+      retryAfter: e?.headers?.['retry-after'],
+    });
+  }
+});
+
+// GET /claude/batches — List all batches
+app.get('/claude/batches', async (_req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res
+      .status(501)
+      .json({ error: 'provider integration disabled', code: 'PROVIDER_DISABLED' });
+  }
+
+  try {
+    console.log('[/claude/batches] Listing batches...');
+    const batches = await messageBatches.listBatches();
+    console.log(`[/claude/batches] Found ${batches.length} batches`);
+    return res.json({ batches });
+  } catch (e: any) {
+    console.error('[/claude/batches] List error:', e?.message || e);
+    return res.status(500).json({ error: e?.message || 'Failed to list batches' });
+  }
+});
+
+// GET /claude/batches/:batchId — Get batch status and results
+app.get('/claude/batches/:batchId', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res
+      .status(501)
+      .json({ error: 'provider integration disabled', code: 'PROVIDER_DISABLED' });
+  }
+
+  try {
+    const { batchId } = req.params;
+    console.log(`[/claude/batches/${batchId}] Getting batch status...`);
+
+    const batch = await messageBatches.getBatch(batchId);
+
+    // If ended, also get results
+    if (batch.status === 'ended') {
+      console.log(`[/claude/batches/${batchId}] Batch ended, fetching results...`);
+      const results = await messageBatches.getBatchResults(batchId);
+
+      console.log(`[/claude/batches/${batchId}] Returning ${results.length} results`);
+
+      return res.json({
+        batchId: batch.id,
+        status: batch.status,
+        requestCounts: batch.requestCounts,
+        createdAt: batch.createdAt,
+        endedAt: batch.endedAt,
+        results,
+      });
+    }
+
+    // Still processing - return 202
+    console.log(`[/claude/batches/${batchId}] Batch still processing: ${batch.status}`);
+    return res.status(202).json({
+      batchId: batch.id,
+      status: batch.status,
+      requestCounts: batch.requestCounts,
+      createdAt: batch.createdAt,
+    });
+  } catch (e: any) {
+    console.error(`[/claude/batches] Get error:`, e?.message || e);
+    if (e?.status === 404) {
+      return res.status(404).json({ error: 'Batch not found', code: 'BATCH_NOT_FOUND' });
+    }
+    return res.status(500).json({ error: e?.message || 'Failed to get batch' });
+  }
+});
+
+// POST /claude/batches/:batchId/cancel — Cancel batch
+app.post('/claude/batches/:batchId/cancel', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res
+      .status(501)
+      .json({ error: 'provider integration disabled', code: 'PROVIDER_DISABLED' });
+  }
+
+  try {
+    const { batchId } = req.params;
+    console.log(`[/claude/batches/${batchId}] Canceling batch...`);
+
+    const batch = await messageBatches.cancelBatch(batchId);
+
+    console.log(`[/claude/batches/${batchId}] Cancel requested, new status: ${batch.status}`);
+
+    return res.json({
+      batchId: batch.id,
+      status: batch.status,
+    });
+  } catch (e: any) {
+    console.error(`[/claude/batches] Cancel error:`, e?.message || e);
+    return res.status(500).json({ error: e?.message || 'Failed to cancel batch' });
+  }
+});
+
+// DELETE /claude/batches/:batchId — Delete batch (for cleanup)
+app.delete('/claude/batches/:batchId', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res
+      .status(501)
+      .json({ error: 'provider integration disabled', code: 'PROVIDER_DISABLED' });
+  }
+
+  try {
+    const { batchId } = req.params;
+    console.log(`[/claude/batches/${batchId}] Deleting batch...`);
+
+    // Note: The SDK doesn't have a delete method, so we'll just acknowledge
+    // In practice, batches are automatically deleted after 29 days
+    console.log(`[/claude/batches/${batchId}] Delete acknowledged (batches expire after 29 days)`);
+
+    return res.status(204).end();
+  } catch (e: any) {
+    console.error(`[/claude/batches] Delete error:`, e?.message || e);
+    return res.status(500).json({ error: e?.message || 'Failed to delete batch' });
+  }
+});
+
 app.listen(PORT, () => {
   console.warn(`✅ Backend listening on http://localhost:${PORT}`);
+  console.warn(
+    `   Message Batches API: ${ANTHROPIC_API_KEY ? 'enabled' : 'disabled (no API key)'}`,
+  );
 });
 
 // Helper: fetch with timeout

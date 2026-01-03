@@ -21,5 +21,18 @@
   "errors.timeout": "Превышено время ожидания.",
   "errors.unknown": "Произошла непредвиденная ошибка.",
   "errors.provider_disabled": "Провайдер отключён (не задан API‑ключ).",
-  "errors.provider_auth": "Ошибка аутентификации провайдера. Проверьте API‑ключ."
+  "errors.provider_auth": "Ошибка аутентификации провайдера. Проверьте API‑ключ.",
+  "errors.quota_exhausted": "Лимит запросов исчерпан. Пополните баланс или подождите сброса лимитов.",
+  "errors.batch_processing": "Пакет ещё обрабатывается. Подождите завершения.",
+  "batch.status.pending": "В очереди",
+  "batch.status.in_progress": "Обрабатывается",
+  "batch.status.ended": "Завершён",
+  "batch.status.canceling": "Отменяется",
+  "batch.status.failed": "Ошибка",
+  "batch.history.title": "История пакетов",
+  "batch.history.empty": "Нет отправленных пакетов",
+  "batch.action.cancel": "Отменить",
+  "batch.info.items": "элементов",
+  "batch.info.succeeded": "успешно",
+  "batch.info.errored": "ошибок"
 }
