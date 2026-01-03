@@ -58,3 +58,4 @@ temp/
 .vercel/
 .netlify/
 /.worktrees/
+.claude/settings.local.json
