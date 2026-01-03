@@ -6,7 +6,7 @@
 
 ---
 
-Статус: S2 100% — tool-builder реализован; ядро готово.
+> Текущий статус проекта см. в `doc/STATUS.md`.
 
 Быстрые ссылки для реализации
 
@@ -15,6 +15,9 @@
 - `doc/best_practices/tool-use.md` — политика/контракты + примеры использования
 - `src/adapters/LLMAdapter.ts` — слой tool-use (single-tool, JSON-only, tool_choice fixed)
 - `src/adapters/BatchAdapter.ts` — обвязка для Message Batches parity
+- `server/src/services/messageBatches.ts` — официальный Message Batches API
+- `src/hooks/useMessageBatches.ts` — хук для Message Batches с polling
+- `src/stores/batchHistoryStore.ts` — Zustand store для истории батчей
 
 ## 0) Каноничные источники (читать по порядку)
 

@@ -90,7 +90,29 @@ API reference (S2)
 
 CRUD истории `batch_id` (add/markExpired/remove/list). В UI: список + «Загрузить/Удалить».
 
-### 2.5 `useLLMToolsEmitter()` — single-вызовы через tools
+### 2.5 `useMessageBatches()` — официальный Message Batches API
+
+Хук для работы с официальным Anthropic Message Batches API (50% экономия).
+
+```ts
+interface UseMessageBatches {
+  submitBatch(sentences: string[]): Promise<void>;
+  cancelBatch(batchId: string): Promise<void>;
+  currentBatchId: string | null;
+  isPolling: boolean;
+}
+```
+
+Правила:
+
+- Использует `@anthropic-ai/sdk` через серверный прокси (`/claude/batches/*`).
+- Prompt caching: `cache_control: { type: 'ephemeral' }` для system/tools.
+- Адаптивный поллинг: короткие интервалы вначале → увеличение при длительном ожидании.
+- История батчей: через `batchHistoryStore` (Zustand + persist, последние 10 записей).
+- Извлечение flashcards из результатов JSONL с агрегацией по `custom_id` (SID).
+- Статусы: `in_progress`, `canceling`, `ended` (с `request_counts`).
+
+### 2.6 `useLLMToolsEmitter()` — single-вызовы через tools
 
 Хук поверх адаптера LLM, **понимает tool-use** и **stop reasons**:
 
@@ -111,7 +133,7 @@ function useLLMToolsEmitter<TSchema>(): {
 - `stop_reason: "max_tokens"` → вернуть `ok=false`, `stopReason="max_tokens"`, чтобы UI мог
   предложить **retry**; для батчей — делегировать split-retry в `useBatch()`/оркестратор.
 
-### 2.6 `useTooltipController()` (Reading)
+### 2.7 `useTooltipController()` (Reading)
 
 Контролирует задержку/отмену/единственный полёт и **visibility-event** для `reveal-on-peek`.
 
@@ -129,24 +151,24 @@ interface TooltipController {
 - Один in-flight; новый вход отменяет старый.
 - На успешный показ → эмит «peeked/visible» (через `useVisibilityPolicy()`).
 
-### 2.7 `useReadingHints()`
+### 2.8 `useReadingHints()`
 
 Разрешение пересечений «слово/фраза» (выигрывает **фраза**), отдаёт классы/легенду из конфига.
 
-### 2.8 `useVisibilityPolicy()`
+### 2.9 `useVisibilityPolicy()`
 
 Поддержка `all-visible`/`reveal-on-peek`. Событие **подсказка показана** → `visible=true`,
 `peeked=true`. Персист/экспорт значений; при ручных правках в Edit — приоритет за Edit.
 
-### 2.9 `useDeckNav()` / `useCardActions()` (Flashcards)
+### 2.10 `useDeckNav()` / `useCardActions()` (Flashcards)
 
 Навигация и действия `next/prev/flip/hide`. Гарантия: при переходе → **front**.
 
-### 2.10 `useHotkeys()`
+### 2.11 `useHotkeys()`
 
 Регистрация хоткеев из конфигов; активность по фокусу контейнера; корректный cleanup.
 
-### 2.11 `useImportExport()`
+### 2.12 `useImportExport()`
 
 - **Export JSON**: полный снапшот (правки, видимость,
   `appVersion/schemaVersion/exportedAt/locale/targetLanguage`).
@@ -155,22 +177,22 @@ interface TooltipController {
 - **Import JSONL** (v1.1): потоковый парсер, `custom_id==SID`, агрегация, отчёт
   imported/skipped/invalid.
 
-### 2.12 `useRestore()`
+### 2.13 `useRestore()`
 
 Откат к входному состоянию после первичной обработки; опц. `Undo` (TTL из конфигов). В
 `reveal-on-peek` сбрасывает `visible/peeked`.
 
-### 2.13 `useErrorBanners()`
+### 2.14 `useErrorBanners()`
 
 Единый диспетчер баннеров (i18n-ключи), маппинг кодов 429/413/500/529, сети/прокси/expired, а также
 **stop_reason: "max_tokens"** (совет «Повторить»/split-retry).
 
-### 2.14 `useContextMenuActions()` (v1.1)
+### 2.15 `useContextMenuActions()` (v1.1)
 
 Сборка пунктов контекстного меню Reading: плейсхолдеры `%w/%p/%b/%s/%sel/%lv/%tl`, URI-кодирование,
 белый список доменов.
 
-### 2.15 `useMediaAnchors()` (v1.3)
+### 2.16 `useMediaAnchors()` (v1.3)
 
 Работа с `{sid,start,end}`; вычисляет активный SID по `currentTime()` плеера; `playSegment(SID)`
 учитывает pre/post-roll из `media.json`.

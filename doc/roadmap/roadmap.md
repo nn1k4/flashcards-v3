@@ -17,15 +17,24 @@ best-practices → `doc/best_practices/*` (включая `tool-use.md`,
   обрабатываем `stop_reason` (особенно `max_tokens`: bump/split-retry); prompt-caching для
   стабильных `system/tools`.
 
-Status (2026‑01‑02): **S3 Flashcards v1 завершён** — Zustand store, useFlashcards/useHotkeys hooks,
-FlashcardsView UI с CSS 3D flip анимацией, интеграция с batch pipeline, E2E тесты.
+Status (2026‑01‑03): **S4 в процессе** — разделён на S4-1 и S4-2.
 
-**⚠️ CRITICAL GAP:** Текущая "batch" реализация — синхронный цикл по Messages API. **НЕ реализован**
-официальный Claude Message Batches API (50% экономия, async, JSONL). См. TRS §7,
-`doc/best_practices/Message Batches.md`, `doc/best_practices/MessageBatches2.md`. **Требуется
-отдельный спринт или включение в S4** для полного соответствия TRS.
+**S4-1: Message Batches API — DONE ✅**
 
-Следующий этап: S4 (Reading v1) или спринт на Message Batches API.
+- Официальный Anthropic Message Batches API (`@anthropic-ai/sdk`)
+- 50% экономия + prompt caching (`cache_control: { type: 'ephemeral' }`)
+- Server: `server/src/services/messageBatches.ts`
+- Hook: `src/hooks/useMessageBatches.ts`
+- Store: `src/stores/batchHistoryStore.ts`
+- UI: режим "Message Batches (50% off)" в TextStub
+
+**S4-2: Reading v1 — TODO**
+
+- Подсветка слов/фраз (приоритет фразы)
+- Tooltip (delay/debounce/cancel/single-flight)
+- Позиционирование в viewport
+
+Следующий этап: S4-2 (Reading v1).
 
 ---
 
@@ -66,8 +75,8 @@ section Этап 1 (MVP)
 S0 Подготовка                 :done,   s0,  2025-08-20, 5d
 S1 Proxy & Health & Ошибки    :done,   s1,  after s0,   5d
 S2 Pipeline Core              :done,   s2,  after s0,   6d
-S3 Flashcards v1              :active, s3,  after s2,   5d
-S4 Reading v1                 :        s4,  after s3,   6d
+S3 Flashcards v1              :done,   s3,  after s2,   5d
+S4 Reading v1                 :active, s4,  after s3,   6d
 S5 Translation v1             :        s5,  after s4,   3d
 S6 Edit v1                    :        s6,  after s5,   5d
 S7 Import/Export JSON         :        s7,  after s6,   4d
@@ -109,8 +118,8 @@ S34 Polish & Release          :        s34, after s33,  2d
 
 ```
 
-Status snapshot (2025-12-29): S0, S1, S2 ✅ complete; S3 (Flashcards v1) active; next S4 (Reading
-v1).
+Status snapshot (2026-01-03): S0–S3 ✅ complete; S4 active (S4-1 Message Batches ✅, S4-2 Reading
+TODO).
 
 > Даты условны; фактический календарь уточняется по состоянию репозитория и ресурсам.
 

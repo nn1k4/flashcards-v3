@@ -44,9 +44,12 @@ learn from real texts that interest you.
 ```
 flashcards-v3/
 ├─ doc/
+│  ├─ chats/                      # Session logs (1.md, 2.md, ...)
 │  ├─ plan/                       # plan_1.md … plan_5.md (MVP → v2.0)
 │  ├─ trs/                        # TRS (single source for acceptance)
 │  ├─ roadmap/                    # long-term roadmap
+│  ├─ glossary/                   # glossary.md — terms and abstractions
+│  ├─ configs/                    # RU docs for each config file
 │  └─ best_practices/
 │     ├─ best_practices0.md       # Modern Best Practices 2025 (React/TS/Node)
 │     ├─ best_practices1.md       # Our stack best practices (2025)
@@ -56,18 +59,53 @@ flashcards-v3/
 │     └─ tool-use.md              # Tools: JSON-only, caching, stop reasons, parallel rules
 │
 ├─ config/                        # JSON/TS configs (validated by Zod/JSON Schema)
-├─ server/                        # CommonJS mock-proxy (ts-node + nodemon)
+│  ├─ app.json, batch.json, flashcards.json, llm.json, network.json, ...
+│
+├─ server/                        # Node.js proxy (ts-node + nodemon)
+│  └─ src/
+│     ├─ index.ts                 # Express server, routes
+│     └─ services/
+│        └─ messageBatches.ts     # Official Anthropic Message Batches API
+│
 ├─ src/
+│  ├─ adapters/                   # LLMAdapter, BatchAdapter
+│  ├─ api/                        # HTTP client (client.ts, tools.ts)
+│  ├─ app/                        # App.tsx
 │  ├─ components/                 # UI only (no async/side-effects)
-│  ├─ hooks/                      # business logic, effects, network, FSM glue
-│  ├─ utils/                      # pure functions, DTO/schema, manifest/aggregation
-│  ├─ locales/                    # i18n: ru.json, uk.json, en.json, …
-│  └─ styles/
-├─ public/
+│  │  ├─ Banners/                 # ErrorBanners
+│  │  ├─ Flashcards/              # Card, CardFace, FlashcardsView, Navigation
+│  │  └─ Text/                    # TextStub (input + mode selector)
+│  ├─ config/                     # Config loader (index.ts)
+│  ├─ external/                   # External modules (latvianSegmentation.ts)
+│  ├─ hooks/                      # Business logic, effects, FSM glue
+│  │  ├─ useBatch.ts              # Batch pipeline FSM
+│  │  ├─ useMessageBatches.ts     # Official Message Batches API hook
+│  │  ├─ useFlashcards.ts         # Flashcards state management
+│  │  ├─ useHotkeys.ts            # Config-driven hotkeys
+│  │  └─ useErrorBanners.tsx      # Error banners dispatcher
+│  ├─ stores/                     # Zustand stores
+│  │  ├─ flashcardsStore.ts       # Flashcards state
+│  │  ├─ batchHistoryStore.ts     # Batch history (last 10, persisted)
+│  │  └─ configStore.ts, i18nStore.tsx, themeStore.tsx
+│  ├─ types/                      # TypeScript types, Zod schemas
+│  │  ├─ config/                  # Config schemas (app.ts, batch.ts, ...)
+│  │  └─ tool_use.ts              # emit_flashcards schema
+│  ├─ utils/                      # Pure functions
+│  │  ├─ fsm.ts                   # Batch FSM
+│  │  ├─ manifest.ts              # Manifest builder
+│  │  ├─ aggregator.ts            # SID aggregation
+│  │  ├─ toolBuilder.ts           # Tool definition generator
+│  │  └─ highlightForm.tsx        # Form highlighting utility
+│  └─ locales/                    # i18n: en.json, ru.json
+│
+├─ pw-e2e/                        # Playwright E2E tests
+│  ├─ flashcards.spec.ts
+│  └─ tooluse.spec.ts
+│
 ├─ AGENT.md                       # Repo-wide rules for AI-assisted coding
 ├─ Codex.md                       # UI/UX and code conventions
-├─ package.json
-└─ …
+├─ playwright.config.ts           # Playwright config (11 min timeout for batches)
+└─ package.json
 ```
 
 **Docs priority:** Official Anthropic docs → `doc/best_practices/TechnicalGuidesForClaudeAPIv2.0.md`
@@ -77,9 +115,14 @@ flashcards-v3/
 
 ## 🧩 App modes (MVP)
 
-- **Text:** input area; toggle **Use batch processing** (button label switches to “Start batch
-  processing”). **Get batch results** form (enter `batch_id`, load, and see results); batch history
-  with **expired** mark after 29 days. **Pre-flight** `/api/health` before any start/load.
+- **Text:** input area with **Processing Mode** selector:
+  - **Single** — direct Claude API call
+  - **Mock Batch** — local batch simulation
+  - **Message Batches (50% off)** — official Anthropic Message Batches API with 50% cost savings
+
+  Features: Current Batch panel (ID, status, progress), Batch History (last 10 batches with status
+  badges), Cancel button for active batches. **Pre-flight** `/api/health` before any start.
+
 - **Flashcards:** ←/→ navigate; Space/↑/↓ flip; `h` hide (not delete). Contexts: show **N** with
   “show more” up to **M** (from config). Rounded corners + flip animation. Font **Noto Sans
   Display** from config.
@@ -289,14 +332,30 @@ npm run docs:config         # generate CONFIG_INDEX.md
 ## 🚀 Quick start
 
 ```bash
-# prerequisites: Node 24.6.0, npm 11.5.1
+# Prerequisites: Node.js 22+ (via nvm), npm
+nvm use 22                     # or install Node 22+
+
 git clone https://github.com/nn1k4/flashcards-v3.git
 cd flashcards-v3
 
-cp .env.example .env           # set proxy base / API keys if needed
+cp .env.example .env           # set ANTHROPIC_API_KEY for Message Batches
 npm ci
 npm run validate:config
-npm run dev                    # open http://localhost:5173
+npm run dev:full               # starts client (5173) + server (3001)
+```
+
+**Server environment:**
+
+- `ANTHROPIC_API_KEY` — required for Message Batches API
+
+**Useful commands:**
+
+```bash
+npm run dev:full               # client + server concurrently
+npm run type-check             # TypeScript strict check
+npm run test                   # unit tests
+npm run e2e:pw                 # Playwright E2E tests (headless)
+npm run e2e:pw:ui              # Playwright with UI
 ```
 
 **Read first:**
